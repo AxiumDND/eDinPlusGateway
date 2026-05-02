@@ -1,8 +1,10 @@
 # eDin+ Gateway — Mobile App Plan
 
-A plan to deliver iPhone and Android apps with feature parity to the current
-Electron desktop app (`eDin+ Gateway Control` v1.2.2), plus the mobile-only
-quality-of-life features that LAN-controller apps are expected to have.
+A plan to deliver iPhone and Android apps that control eDin+ lighting via
+the gateway's HTTP API. The mobile app is a **multi-site, HTTP-only**
+controller — it intentionally drops the TCP-event path the desktop app
+uses and instead presents a clean Sites → Areas → Scenes → Channels
+drill-down.
 
 ---
 
@@ -10,23 +12,26 @@ quality-of-life features that LAN-controller apps are expected to have.
 
 **Goals**
 - One codebase shipping to both iOS and Android.
-- Feature parity with the current desktop app for the screens that actually
-  work today: Setup, Keypad, Channel, Area / Scenes (incl. scene editor with
-  level / RGB / Tunable White controls).
-- Live event monitoring over TCP (port 26) so plate-press and input events
-  show up in real time, same as desktop.
-- Reuse as much of the existing parser / command-builder logic from
-  `renderer.js` as possible — it is the most valuable IP in this repo.
+- Multi-site management. A user can save several sites (e.g. "Home",
+  "Holiday cottage", "Office") and switch between them.
+- Multi-NPU per site. A site can have one or more NPUs; each NPU holds
+  its own credentials; areas from all NPUs in a site are merged into a
+  single tile grid for the user.
+- Reuse the parser / command-builder logic from `renderer.js` — the
+  protocol parts are the same, only the transport changes.
+- Feature parity with the desktop app's end-user flow:
+  Setup (now: Add Site) → Areas → Scenes → per-channel control.
 
 **Non-goals (for v1)**
+- TCP / live-event monitoring. **HTTP only.** That means no live
+  plate-press feedback in the app — accepted.
 - Replacing or competing with the existing desktop app — they ship in
   parallel.
-- Cloud sync, multi-site management, user accounts beyond what the gateway
-  itself supports.
-- DALI configuration tooling (see §10 — the DALI tab is broken in the
-  desktop app today; we will descope or rebuild deliberately, not port).
-- Tablet-optimised layouts. We will design for phones first; tablets get a
-  scaled phone layout in v1.
+- DALI configuration tooling (see §10; the DALI tab is broken in the
+  desktop app today).
+- Cloud sync, account systems, push notifications.
+- Tablet-optimised layouts (phones first; tablets get a scaled phone
+  layout in v1).
 
 ---
 
@@ -34,112 +39,162 @@ quality-of-life features that LAN-controller apps are expected to have.
 
 | File | Role | LOC |
 | --- | --- | --- |
-| `main.js` | Electron main process. Owns the persistent TCP socket (`net.Socket`, port 26) and HTTP transport (`node-fetch`, port 80). Reads/writes a userData `settings.txt`. | 248 |
-| `preload.js` | `contextBridge` exposing `sendCommand`, `updateSettings`, `requestSettings`, `onLogMessage`, `onLoadSettings`, `openSceneEdit`. | ~20 |
+| `main.js` | Electron main process. Owns persistent TCP socket (port 26) and HTTP transport (port 80). Reads/writes `userData/settings.txt`. | 248 |
+| `preload.js` | `contextBridge` exposing IPC bridge to the renderer. | ~20 |
 | `renderer.js` | UI logic, command formatting, response parsing, color pickers, scene-edit modal. | ~2080 |
-| `index.html` / `style.css` | Layout (5 nav tabs + log pane + 2 modals). Desktop-sized (1280×800). | ~300 / ~760 |
-| `gateway_readme.md` + `GatewayPDFs/` | Mode Lighting's ASCII protocol spec, our reference. | n/a |
+| `index.html` / `style.css` | Desktop layout (1280×800), 5 nav tabs + log pane + 2 modals. | ~300 / ~760 |
+| `gateway_readme.md` + `GatewayPDFs/` | Mode Lighting's ASCII protocol spec. | n/a |
 
-**Commands the desktop app actually sends today** (grep on `renderer.js`):
+**Commands the desktop app sends** (and that we will reuse, minus the
+TCP-only ones):
 
 ```
-$User,<u>,<p>;            # auth prefix
+$User,<u>,<p>;            # auth prefix (sent on every HTTP request)
 ?VERSION;                 # connectivity test
-$Events,<0|1>;            # turn event reporting on/off
 ?areanames;               # list areas
 ?SCNNAMES,<area>;         # list scenes for an area
 $SCNRECALL,<scn>;         # recall scene
-$SCNRECALLX,<scn>,255,1000;
+$SCNRECALLX,<scn>,<lvl>,<ms>;
 $SCNSAVE,<scn>;           # save scene from current channel state
 ?SCNCHANNAMES,<scn>;      # list scene's channels
 ?SCNCHANSTATES,<scn>;     # current levels/colors of those channels
-$BTNSTATE,<addr>,<dev>,<btn>,<state>;        # simulate a wall-plate press
 $CHANFADE,<addr>,<dev>,<chan>,<lvl>,<ms>;
 $DMXFADE,...; $DALIFADE,...;
 $CHANRGBCOLRFADE,...; $DMXRGBCOLRFADE,...;
 $CHANTWCOLR,<addr>,<dev>,<chan>,#<temp>K,<ms>;
 ```
 
-**Responses parsed:** `!AREANAME`, `!SCNNAME`, `!CHANNAME`, `!DMXNAME`,
-`!DALINAME`, `!CHANRGBCOLRNAME`, `!DMXRGBCOLRNAME`, `!CHANTWCOLRNAME`,
-`!CHANLEVEL`, `!DMXLEVEL`, `!DALILEVEL`, `!CHANRGBCOLR`, `!DMXRGBCOLR`,
-`!CHANTWCOLR`, `!BTNSTATE`, `!INPSTATE`, `!VERSION`.
+Dropped from the mobile build:
+- `$Events,1;` and the `!BTNSTATE` / `!INPSTATE` listeners (TCP-only).
+- The Keypad screen and the standalone Channel screen — those are
+  diagnostic tools and not part of the end-user drill-down. Could
+  return as a "Diagnostics" pane later (decision D-2 covers DALI and
+  these together).
 
-**Settings persisted:** `IP_ADDRESS`, `CONNECTION_TYPE` (`http` | `tcp`),
-`USERNAME`, `PASSWORD` — currently in `userData/settings.txt`, also mirrored
-into `localStorage`. Default: `192.168.1.100` / `Administrator` / `mode1234`.
+**Responses parsed** (lift directly from `renderer.js`):
+`!AREANAME`, `!SCNNAME`, `!CHANNAME`, `!DMXNAME`, `!DALINAME`,
+`!CHANRGBCOLRNAME`, `!DMXRGBCOLRNAME`, `!CHANTWCOLRNAME`, `!CHANLEVEL`,
+`!DMXLEVEL`, `!DALILEVEL`, `!CHANRGBCOLR`, `!DMXRGBCOLR`, `!CHANTWCOLR`,
+`!VERSION`.
 
 ---
 
-## 3. Recommended stack: React Native + Expo (dev-client)
+## 3. Recommended stack
 
 | Concern | Pick | Why |
 | --- | --- | --- |
-| Framework | **React Native** | Lift `renderer.js` parsers and command builders almost verbatim (they are pure JS string manipulation). Largest pool of devs. |
-| Tooling | **Expo + dev-client + EAS Build** | Modern RN DX, OTA updates, no Xcode/Gradle in the everyday loop. We need a custom dev-client (not Expo Go) because of the TCP socket dependency. |
-| TCP | **react-native-tcp-socket** | Actively maintained, drop-in API similar to Node's `net.Socket`. |
-| HTTP | Built-in `fetch` | Same protocol the desktop uses on port 80. |
-| Discovery | **react-native-zeroconf** | mDNS so users don't have to type the gateway's IP. Big mobile-only win. |
-| State | **Zustand** | Lightweight; we have shared state (connection, areas, scenes, channels, log) across many screens but no need for full Redux. |
-| Navigation | **React Navigation** (bottom tabs + native stack) | Standard. |
-| Storage | **expo-secure-store** for password, **AsyncStorage** for IP/username | Don't put the gateway password in plain AsyncStorage. |
-| Color wheel | Custom RN view with `react-native-skia` or `react-native-svg` + PanResponder | Today's wheel uses 2D canvas + `mousedown/mousemove`; we redo this for touch. |
+| Framework | **React Native + Expo (managed)** | Lift `renderer.js` parsers and command builders almost verbatim. With no TCP requirement we can stay on managed Expo (no dev-client needed) and ship over-the-air updates trivially. |
+| Build / release | **EAS Build + EAS Submit** | Standard Expo path to TestFlight and Play. |
+| HTTP | Built-in `fetch` | POST `text/plain` to `http://<npu-ip>/gateway?` with `$User,…;` prefix. Same shape the desktop uses. |
+| Discovery | **expo-zeroconf** (or `react-native-zeroconf`) | mDNS so users don't have to type each NPU IP. Big v1.1 win — list as stretch for v1 (decision D-2). |
+| State | **Zustand** | Lightweight; we have shared state across screens (sites, current site, areas, scene-in-edit) but no need for full Redux. |
+| Navigation | **React Navigation** (native stack + bottom tabs once inside a site) | Sites stack at the root; once a site is opened, bottom tabs for Areas / Scenes / Settings. |
+| Storage — non-secret | **AsyncStorage** (`@react-native-async-storage/async-storage`) | Sites list, NPU IPs, last-active site, UI prefs. |
+| Storage — secrets | **expo-secure-store** | Per-NPU username/password lives in iOS Keychain / Android Keystore. We never write passwords to AsyncStorage. |
+| Color wheel | Custom view with `react-native-skia` (or `react-native-svg`) + `PanResponder` | Today's wheel uses a 2D canvas + `mousedown/mousemove`; we redo this for touch. |
 
-**Flutter is the credible alternative.** It would mean rewriting all the JS
-parsers in Dart and ramping the team on Dart, in exchange for a slightly
-nicer-feeling UI. Given the JS reuse story above, RN is the lower-risk
-path for v1. We can revisit if RN performance disappoints us in
-benchmarking.
+**Flutter is the credible alternative.** It would mean rewriting the JS
+parsers in Dart and ramping the team on Dart, with a slightly nicer-feeling
+UI as the payoff. Given the JS reuse story above, RN is the lower-risk
+path for v1.
 
 ---
 
-## 4. Architecture
+## 4. Data model: Sites and NPUs
+
+This is the biggest difference from the desktop app, which only knows
+about a single gateway.
+
+```ts
+type NPU = {
+  id: string;            // local UUID
+  label?: string;        // optional friendly label, e.g. "Main rack"
+  ip: string;            // 192.168.x.x
+  username: string;      // stored alongside ip in AsyncStorage
+  // password lives in expo-secure-store, keyed by `npu:${id}`
+};
+
+type Site = {
+  id: string;            // local UUID
+  name: string;          // user-given, e.g. "Holiday cottage"
+  npus: NPU[];           // one or more
+  createdAt: number;
+};
+
+type AppState = {
+  sites: Site[];          // persisted to AsyncStorage
+  activeSiteId?: string;  // null until the user opens a site
+};
+```
+
+Rules:
+- **Credentials are per NPU**, not per site. Each row in the Add Site
+  form has its own username/password.
+- **Areas merge across NPUs at display time.** Internally each `Area`
+  carries its origin `npuId` so commands can be routed to the correct
+  NPU. The user never sees that distinction.
+- **No concurrent sites.** Only the active site has connections in
+  flight; switching site discards in-flight requests.
+- **No persistent connection.** Every action is a fresh HTTPS-style
+  POST to one of the active site's NPUs. Auth prefix `$User,…;` is
+  prepended to every request body using the matching NPU's credentials.
+
+---
+
+## 5. Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ UI layer (React components, screens)                             │
-│   SetupScreen / AreasScreen / SceneScreen / SceneEditScreen      │
-│   KeypadScreen / ChannelScreen / LogPane                         │
+│ UI layer (React Navigation stacks + screens)                     │
+│   SitesScreen / AddSiteScreen / EditSiteScreen                   │
+│   SiteHomeScreen (Areas grid)                                    │
+│   AreaScreen (Scenes list)                                       │
+│   SceneScreen (Channels list, recall / save / send)              │
+│   SettingsScreen                                                 │
 └─────────────────┬────────────────────────────┬───────────────────┘
                   │                            │
         ┌─────────▼────────┐         ┌─────────▼────────────┐
-        │ Zustand stores   │         │ ColorPicker / shared │
-        │ - connection     │         │ UI primitives        │
+        │ Zustand stores   │         │ Shared UI primitives │
+        │ - sitesStore     │         │ ColorPickerSheet,    │
+        │ - activeSite     │         │ ChannelRow, Tile…    │
         │ - areas / scenes │         └──────────────────────┘
         │ - channels       │
-        │ - log            │
         └─────────┬────────┘
-                  │ subscribes / dispatches
+                  │
         ┌─────────▼─────────────────────────────────────┐
-        │ GatewayClient (singleton)                     │
-        │ - connect(ip, mode)                           │
-        │ - send(cmd) → Promise<response>               │
-        │ - on('event', cb) for !BTNSTATE, !INPSTATE …  │
-        │ - reconnect on app foreground                 │
+        │ SiteSession (one per active site)             │
+        │ - listAreasAcrossNpus()                       │
+        │ - listScenesForArea(area)                     │
+        │ - recallScene(scene), saveScene(scene)        │
+        │ - listChannels(scene), setChannel(...)        │
+        │ - dispatches each call to the right NPU client│
         └─────────┬─────────────────────────────────────┘
                   │
-        ┌─────────▼──────────┐    ┌──────────────────────┐
-        │ TcpTransport       │    │ HttpTransport        │
-        │ react-native-tcp-  │    │ fetch POST text/plain│
-        │ socket             │    │                      │
-        └────────────────────┘    └──────────────────────┘
+        ┌─────────▼─────────────────────────────────────┐
+        │ NpuHttpClient (one per NPU)                   │
+        │ - send(commandString) → Promise<rawResponse>  │
+        │ - injects $User,<u>,<p>; prefix               │
+        │ - retry/backoff for transient network errors  │
+        └─────────┬─────────────────────────────────────┘
                   │
-        ┌─────────▼──────────────────────────────────────┐
-        │ Pure helpers (lifted from renderer.js)         │
-        │ - protocol/commands.ts (builders)              │
-        │ - protocol/parsers.ts  (response parsers)      │
-        │ - protocol/types.ts    (Channel, Scene, …)     │
+        ┌─────────▼─────────────────────────────────────┐
+        │ Pure helpers (lifted from renderer.js)        │
+        │ - protocol/commands.ts (builders)             │
+        │ - protocol/parsers.ts  (response parsers)     │
+        │ - protocol/types.ts    (Channel, Scene, …)    │
         └────────────────────────────────────────────────┘
 ```
 
-`GatewayClient` is the single chokepoint for I/O. It hides whether the
-underlying transport is TCP (event-capable) or HTTP (poll-only) and exposes
-the same Promise-and-events API to the rest of the app. This is the layer
-that replaces `main.js` + `preload.js`.
+`SiteSession` is the only thing the UI talks to. It hides the fact that
+"this site has 2 NPUs" — when the UI asks for areas, `SiteSession` calls
+each NPU's `?areanames;` in parallel, merges the results, tags each one
+with `npuId`, and returns one combined list. When the UI asks to recall
+a scene, `SiteSession` reads the scene's `npuId` and routes the request
+to the right NPU client.
 
 ---
 
-## 5. Reuse map: what lifts from `renderer.js` unchanged
+## 6. Reuse map: what lifts from `renderer.js`
 
 These are pure functions and port to TypeScript with cosmetic changes:
 
@@ -148,251 +203,321 @@ These are pure functions and port to TypeScript with cosmetic changes:
 - `parseAreaResponse()`, `parseSceneResponse()`
 - `parseChannelNames()`, `parseChannelStates()`
 - `hexToRgb()`, `rgbToHex()`, `hslToHex()`, `rgbToHsl()`
-- All the command-builder string templates (`$CHANFADE,...`, `$SCNRECALL,...`,
-  `$CHANRGBCOLRFADE,...`, `$CHANTWCOLR,...`).
+- All the command-builder string templates.
 
 These get rebuilt for touch:
 
-- `populateChannelList()` → `<ChannelList>` component (FlatList).
-- `showColorPicker()` / color wheel canvas → `<ColorPickerSheet>` using
+- `populateChannelList()` → `<ChannelList>` (FlatList).
+- `showColorPicker()` / canvas wheel → `<ColorPickerSheet>` using
   `react-native-skia` + `PanResponder`. Bottom-sheet, not modal.
 - `nudgeSlider()`, `setAllChannelsToValue()`, `nudgeAllChannels()` → store
   actions called from buttons.
 - `updateChannelControls()` → reactive: state shape drives rendering, no
   imperative DOM updates.
 
-These get redesigned, not ported:
-
-- The fixed-bottom log pane. Mobile gets a slide-up Diagnostics sheet,
-  not a permanent split.
-- The 5-tab top nav. Mobile gets a 4-icon bottom-tab bar
-  (Areas / Keypad / Channel / Settings) plus a header status pill.
-- Modals for scene edit and color picking → full-screen routes / bottom
-  sheets.
+Dropped:
+- The bottom log pane (HTTP-only means there are no async events to log
+  in real time). Replaced by a per-screen "last command" debug toggle in
+  Settings if needed.
+- The TCP transport in `main.js` and the IPC bridge in `preload.js`.
+- `?Events,1;` plumbing.
 
 ---
 
-## 6. Mobile-specific concerns
+## 7. UX / navigation
 
-These are the things that catch desktop-to-mobile ports off guard. Each
-one is a checklist item, not a research project.
-
-**iOS Local Network permission.** Talking to a LAN gateway triggers a
-permission prompt the first time. Need:
-- `NSLocalNetworkUsageDescription` in `Info.plist`
-  (e.g. "eDin+ Gateway Control needs to discover and control your lighting
-  gateway on the local network.").
-- `NSBonjourServices` listing any mDNS service types we browse.
-- Trigger the prompt at a sensible moment (Setup screen, not app launch).
-
-**Android cleartext to a LAN IP.** The gateway is HTTP, not HTTPS. Need
-`networkSecurityConfig` with cleartext allowed for private IPv4 ranges
-(`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and `usesCleartextTraffic`
-left default. Do not disable cleartext globally; scope it.
-
-**Backgrounding kills TCP sockets.** Desktop holds a persistent connection
-forever; mobile OSes will tear ours down on background. `GatewayClient`
-must:
-- Listen to `AppState` `active`/`background`.
-- On `background`: tear down the TCP socket cleanly, mark connection
-  state as suspended.
-- On `active`: reconnect, re-`$User,...`, re-enable `$Events,1;`, re-fetch
-  area names so the UI is fresh.
-- Do not attempt long-lived background sockets — that path leads to iOS
-  background-mode entitlement requests we do not need.
-
-**HTTP keep-alive vs event capture.** Same caveat as desktop: HTTP mode
-cannot receive events, only command responses. Surface this in the UI
-(small badge on the Setup screen plus a one-time tooltip) so users know
-why they need TCP for live plate-press feedback.
-
-**Discovery (new feature).** mDNS browse for the gateway on the Setup
-screen. If the gateway advertises itself via Bonjour we present a "Found
-gateways on your network" list and let the user tap one. If it doesn't,
-we fall back to a manual IP field. Confirm the actual mDNS service name
-the gateway broadcasts before we hard-code it.
-
-**Credential storage.** Move `PASSWORD` out of plain key/value storage and
-into `expo-secure-store` (iOS Keychain / Android Keystore). Keep
-`IP_ADDRESS` and `USERNAME` in AsyncStorage — they are not secrets.
-
-**Touch-target sizing.** Today's nudge buttons are tiny. Mobile minimum
-is 44pt iOS / 48dp Android. Sliders need wider hit areas than the default.
-
----
-
-## 7. UX redesign sketch (text wireframes)
+### 7.1 First-launch (no sites saved)
 
 ```
 ┌──────────────────────────────┐
-│ eDin+      ● TCP   192.168…  │  ← header w/ live connection pill
-├──────────────────────────────┤
+│         eDin+                │
 │                              │
-│   ┌──────────┐ ┌──────────┐  │
-│   │ Kitchen  │ │ Living   │  │  ← Areas grid (current home)
-│   └──────────┘ └──────────┘  │
-│   ┌──────────┐ ┌──────────┐  │
-│   │ Bedroom  │ │ Hallway  │  │
-│   └──────────┘ └──────────┘  │
+│       (no sites yet)         │
 │                              │
-├──────────────────────────────┤
-│ [Areas] [Keypad] [Chan] [⚙]  │  ← bottom tabs
+│   ┌──────────────────────┐   │
+│   │     + Add Site       │   │
+│   └──────────────────────┘   │
+│                              │
 └──────────────────────────────┘
-
-Tap an area → scene list w/ recall button + edit (gear) per row.
-Tap edit → full-screen Scene Edit:
-  - sticky header: scene name, ALL OFF / ALL ON / ±5%
-  - virtualised list of channels:
-      [Name              [——●———————] 47% [-][+]]
-      [Name (RGB)        [color chip] [——●——] 80%]
-      [Name (TW)         [—●——————]   2700K   ]
-  - bottom action bar: Send / Save / Close
-Tap a color chip → bottom-sheet ColorPicker (RGB wheel / TW / Advanced tabs).
 ```
 
-Settings tab carries: IP, connection type, username, password, "Test
-connection", "Discover gateways" button, link to a Diagnostics screen
-(the current log pane, reachable on demand only).
+### 7.2 Saved Sites screen (returning users)
+
+```
+┌──────────────────────────────┐
+│ Sites                    [+] │
+├──────────────────────────────┤
+│ ▸ Home                       │
+│   192.168.1.100 + 1 more     │
+├──────────────────────────────┤
+│ ▸ Holiday cottage            │
+│   192.168.50.10              │
+├──────────────────────────────┤
+│ ▸ Office                     │
+│   10.0.0.20                  │
+└──────────────────────────────┘
+```
+
+Long-press a row → Edit / Delete.
+
+### 7.3 Add Site screen
+
+```
+┌──────────────────────────────┐
+│ ‹ Back   New Site      Save  │
+├──────────────────────────────┤
+│ Site name                    │
+│ [ Home                     ] │
+│                              │
+│ NPUs                         │
+│ ┌──────────────────────────┐ │
+│ │ NPU 1                  ✕ │ │
+│ │ Label (optional)         │ │
+│ │ [ Main rack            ] │ │
+│ │ IP address               │ │
+│ │ [ 192.168.1.100        ] │ │
+│ │ Username                 │ │
+│ │ [ Administrator        ] │ │
+│ │ Password                 │ │
+│ │ [ ••••••••             ] │ │
+│ │ [ Test NPU             ] │ │
+│ └──────────────────────────┘ │
+│                              │
+│ [ + Add another NPU ]        │
+│                              │
+│ [ Test all & Save ]          │
+└──────────────────────────────┘
+```
+
+Save is enabled when every NPU row has a valid IP + username + password
+and "Test all" returned `!VERSION` from each.
+
+### 7.4 Inside a site
+
+Tapping a saved site enters that site's stack. Bottom tabs:
+**Areas** (default) / **Settings** (this site's NPUs, edit / delete).
+
+```
+SiteHomeScreen (Areas grid)
+─────────────────────────────
+Tiles for every area returned by ?areanames; on every NPU at this site,
+merged into one alphabetical (or original-order) grid.
+
+Tap a tile →
+
+AreaScreen (Scenes list)
+─────────────────────────────
+Vertical list of scenes for that area. Each row:
+  [ Scene name        Recall  ▸ ]
+    └ tap row body  → drill into channels (SceneScreen)
+    └ tap "Recall"  → fires $SCNRECALL, brief toast
+
+SceneScreen (Channels list — individual on/off control)
+─────────────────────────────
+Sticky header: scene name + Recall / Save / Close
+Body: list of channels in that scene
+  - Level channel:  [ Name           [——●——————] 47%  on/off ]
+  - RGB channel:    [ Name (RGB)     [chip] [——●——] 80%      ]
+  - TW channel:     [ Name (TW)      [—●——] 2700K            ]
+Each row's on/off is a tap-toggle that fires the matching $…FADE,…,255
+or $…FADE,…,0 command.
+```
+
+### 7.5 Settings (global vs site)
+
+Two tiers:
+- **Global Settings** (on the Sites screen header): app theme, units,
+  diagnostic toggles.
+- **Site Settings** (Settings tab inside a site): the list of NPUs,
+  edit / add / remove, "Test connection" per NPU.
 
 ---
 
-## 8. Phased delivery
+## 8. Mobile-specific concerns
+
+These are the things that catch desktop-to-mobile ports off guard.
+Everything TCP-related from the previous draft of this plan is gone —
+HTTP-only removes the whole class of socket-lifecycle problems.
+
+**iOS Local Network permission.** Talking to a LAN NPU from an iOS app
+still triggers a permission prompt on first contact, even over HTTP, on
+iOS 14+. Need:
+- `NSLocalNetworkUsageDescription` in `Info.plist` (e.g. "eDin+ needs to
+  contact your lighting NPUs on your local network.").
+- Trigger the prompt at the right moment — first "Test NPU" tap, not on
+  app launch — so users know what they're approving.
+
+**Android cleartext to a LAN IP.** The NPU is HTTP, not HTTPS. We need
+`networkSecurityConfig` allowing cleartext for private IPv4 ranges
+(`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) only — do not disable
+cleartext globally.
+
+**Credential storage.** Per-NPU passwords go into `expo-secure-store`
+keyed by `npu:${npuId}`. Site name / NPU IP / username are not secrets
+and live in AsyncStorage. Never log passwords; mask them in any
+diagnostic display.
+
+**Request timeouts and offline UX.** HTTP to a LAN device fails fast
+when the device is unreachable — set a 5 s timeout per request, show a
+clear "NPU not reachable" state at the row level rather than a global
+spinner. Multi-NPU sites must keep working even if one NPU is offline
+(merge what we got, mark the missing one).
+
+**Touch-target sizing.** Today's nudge buttons are tiny. Mobile minimum
+is 44 pt iOS / 48 dp Android. Sliders need wider hit areas than the
+default.
+
+**Discovery (stretch, decision D-2).** mDNS browse on the Add Site
+screen if the gateway advertises itself via Bonjour. Need to confirm
+the actual service type the eDin+ NPU broadcasts before we hard-code it.
+
+---
+
+## 9. Phased delivery
 
 Each phase is a shippable internal build. Each phase ends with a tag and
 a TestFlight / Play internal-testing build.
 
 **Phase 0 — repo and tooling (≈2 days)**
-- New `mobile/` directory in this repo (or a sibling `eDinPlusMobile`
-  repo — call this out as decision D-1 below).
-- Bootstrap Expo app, dev-client, EAS Build configured for both
+- Add `mobile/` directory in this repo (decision D-1).
+- Bootstrap Expo (managed) app, EAS Build configured for both
   platforms, GitHub Actions CI running typecheck + tests.
 - Lift `protocol/commands.ts`, `protocol/parsers.ts`, `protocol/types.ts`
   from `renderer.js`. Unit-test the parsers against captured gateway
-  fixtures (we will record real responses against a live gateway and
-  commit them to `protocol/__fixtures__/`).
+  fixtures (we will record real responses against a live NPU and commit
+  them to `protocol/__fixtures__/`).
 - **Exit criteria:** `npm test` green, builds install on a real iPhone
   and a real Android device.
 
-**Phase 1 — connectivity (≈1 week)**
-- `GatewayClient` + `TcpTransport` + `HttpTransport`.
-- Setup screen: IP / connection type / credentials, Test Connection
-  button, status pill in header.
-- Connection persisted, reconnect-on-foreground works.
-- Diagnostics screen showing raw command/response log.
-- **Exit criteria:** Test Connection succeeds on both transports against
-  a real gateway. Plate-press events show up in Diagnostics when on TCP.
+**Phase 1 — Sites and Add Site (≈4–5 days)**
+- `Site` / `NPU` data model in Zustand, persisted to AsyncStorage +
+  secure-store.
+- Sites screen with empty state + Add Site CTA.
+- Add Site / Edit Site forms, multi-NPU rows, "Test NPU" hits
+  `?VERSION;` and reports per-row pass/fail.
+- Long-press to delete a site; confirm dialog.
+- **Exit criteria:** can save a site with 2 NPUs, restart the app, see
+  it reappear, edit it, delete it. Test NPU shows version on success
+  and a clear failure on bad creds / wrong IP.
 
-**Phase 2 — Areas and scenes (≈1 week)**
-- Areas tab: tile grid from `?areanames`.
-- Scene list per area from `?SCNNAMES,<n>`.
-- Tap to recall (`$SCNRECALL`).
-- Scene status pill (on/off) updated from `!SCNSTATE` events.
-- **Exit criteria:** can recall scenes from a phone reliably; on/off
-  state reflects gateway truth within ~500 ms over TCP.
+**Phase 2 — Site Home, Areas merging (≈3–4 days)**
+- Open a site → fan out `?areanames;` to all NPUs in parallel, merge,
+  tag each area with `npuId`, render as tile grid.
+- Pull-to-refresh.
+- Per-NPU offline state surfaced inline (e.g. "1 NPU unreachable").
+- **Exit criteria:** opening a 2-NPU site shows a single merged grid,
+  works correctly when one NPU is offline.
 
-**Phase 3 — Scene editor (≈2 weeks, the big one)**
+**Phase 3 — Areas → Scenes (≈3 days)**
+- Tap area → Scenes screen.
+- Tap "Recall" on a scene row → `$SCNRECALL` to the right NPU.
+- **Exit criteria:** can recall scenes for any area on any NPU at the
+  site, end-to-end.
+
+**Phase 4 — Scenes → Channels (≈2 weeks, the big one)**
+- Tap scene row body → SceneScreen.
 - Channel list with virtualised rendering.
 - Level sliders + nudge buttons + percent display.
+- Per-channel on/off tap-toggle.
 - Tunable White slider with K display.
 - RGB / RGBW chip + bottom-sheet color picker (wheel / TW / advanced
   RGB tabs, like desktop).
-- Send / Save / Close actions; `$SCNRECALLX` on entry, `$SCNSAVE` on save.
-- Global ALL OFF / ALL ON / ±5%.
-- **Exit criteria:** every scene-edit interaction we have on desktop
-  works on mobile, validated against the same gateway side-by-side.
+- Recall / Save / Close actions; `$SCNRECALLX` on entry, `$SCNSAVE` on
+  save. Routed via `npuId`.
+- **Exit criteria:** every scene-edit interaction the desktop has works
+  on mobile, validated against the same NPU side-by-side.
 
-**Phase 4 — Keypad + single Channel (≈2–3 days)**
-- Direct port of the existing `$BTNSTATE` and `$CHANFADE` screens.
-- Lower priority because they are diagnostic tools, not end-user
-  features.
-
-**Phase 5 — mobile-only polish (≈1 week)**
-- mDNS gateway discovery on the Setup screen.
-- Pull-to-refresh on Areas and scene lists.
-- Haptics on slider commit, scene recall.
+**Phase 5 — polish (≈1 week)**
+- Pull-to-refresh on every list.
+- Haptics on slider commit, scene recall, on/off toggle.
 - Light / dark theme respecting system setting.
 - App icons, splash, store metadata.
 
 **Phase 6 — store submission (≈1–2 weeks elapsed, mostly review wait)**
-- TestFlight beta with a small group.
+- TestFlight beta.
 - Play internal testing track.
-- App Store review prep (privacy nutrition labels — local-only, no data
-  collected, makes the form easy).
+- Privacy nutrition labels — local-only, no data collected, makes the
+  form trivial.
 - Production release.
 
-Total: ~6–8 weeks of focused work for one engineer, plus review time.
+Total: ~5–7 weeks of focused work for one engineer, plus review time.
+(About a week shorter than the previous TCP-inclusive plan.)
 
 ---
 
-## 9. Risks and unknowns
+## 10. Risks and unknowns
 
 | Risk | Mitigation |
 | --- | --- |
-| Gateway only advertises HTTP cleartext — App Store reviewers sometimes ask for justification. | Privacy questionnaire: "Communicates with a local-network device on the user's LAN; no data leaves the device." Cleartext is restricted to private IPv4 ranges via `networkSecurityConfig`. |
-| `react-native-tcp-socket` behaviour on iOS post-Local-Network-prompt is occasionally flaky on older RN versions. | Pin to a recent RN/Expo SDK; smoke-test the prompt flow on iOS 16/17/18 before Phase 1 ends. |
-| `?SCNCHANNAMES` / `?SCNCHANSTATES` ordering race exists on desktop today (renderer relies on `setTimeout(250)`). | Replace timeout with proper request/response correlation: tag each query, await `!OK,...` before parsing follow-up payload. Cleaner than what desktop does. |
-| Backgrounded socket reconnect storms if the user toggles the app rapidly. | Debounce reconnects; cap at one attempt per 2 s; expose connection state in the UI so users can see why nothing is responding. |
-| Color picker performance on low-end Androids using a 200×200 per-pixel canvas like desktop does. | Pre-rasterise the wheel as an SVG / Skia image, only redraw the thumb. Already a known win. |
-| DALI tab is dead code on desktop (HTML calls `toggleDaliBroadcast`, `sendDaliOn`, etc., which do not exist in `renderer.js`). | See §10 — this is a decision, not a port. |
+| HTTP cleartext to LAN — App Store reviewers occasionally ask about it. | Privacy questionnaire: "Communicates with a local-network device on the user's LAN; no data leaves the device." `networkSecurityConfig` scopes cleartext to private IPv4 ranges only. |
+| `?SCNCHANNAMES` / `?SCNCHANSTATES` ordering — desktop relies on `setTimeout(250)` to avoid a race. | Replace with proper request/response correlation: tag each query, await `!OK,...` before parsing follow-up payload. Cleaner than what desktop does today. |
+| Multi-NPU "merge" hides which NPU owns an area — confusing if names collide ("Kitchen" on both NPUs). | Show a small badge ("NPU 1") on tiles only when names collide; otherwise hide it. Detect collision client-side after the merge. |
+| Color picker performance on low-end Androids using a 200×200 per-pixel canvas like desktop does. | Pre-rasterise the wheel as a Skia image, only redraw the thumb. Already a known win. |
+| Stale state — without TCP events, the app can't know if someone changed a scene from a wall plate. | Aggressive pull-to-refresh + auto-refresh on screen focus. Acceptable v1 trade-off given HTTP-only is a deliberate choice. |
+| DALI / Keypad / standalone Channel screens are not in the new flow. | See decision D-3. They could come back as a Diagnostics tab post-v1. |
 
 ---
 
-## 10. Decisions we need from you (D-list)
+## 11. Decisions we still need from you
 
-These are the questions whose answers shape the plan. Flagging them now
-so we don't sleepwalk past them.
+These are the questions whose answers shape the plan. Most of the
+earlier set were resolved by your last message; what remains:
 
 - **D-1 — Repo layout.** Add a `mobile/` directory inside this repo, or
   spin up a new `eDinPlusMobile` repo? My default: same repo, separate
   top-level dir, share the `protocol/` package via path-import. Easier
   for one-engineer development.
-- **D-2 — DALI tab.** The desktop DALI screen is broken (HTML calls
-  functions that do not exist in `renderer.js`). Options:
-  (a) skip DALI entirely in v1 (recommended);
-  (b) port it properly with the gateway's DALI commands from
-  `gateway_readme.md` — adds ~3–5 days;
-  (c) hide it behind a "Diagnostics" toggle.
-- **D-3 — Phone-only or phone+tablet for v1?** Recommend phone-only.
-  Tablets get a scaled phone layout; iPad-optimised layout in v1.1.
-- **D-4 — Auth model.** Stick with the existing username/password the
-  gateway has, stored locally? Or do we want a per-user PIN on top, so
-  multiple housemates can have different access? My default: passthrough
-  to gateway auth, no extra PIN. Add PIN later if requested.
+- **D-2 — mDNS discovery in v1?** Adds ~1–2 days. Recommendation: ship
+  v1 with manual IP entry only; add mDNS in v1.1 once we know what
+  service type the NPU advertises (if any).
+- **D-3 — Diagnostics screen.** Do you want any of the desktop-only
+  screens (DALI, Keypad simulator, standalone Channel control) carried
+  over as a hidden Diagnostics tab for installers? Recommendation: skip
+  in v1. They're installer tools, not end-user features, and the
+  desktop app remains available for them.
+- **D-4 — Channel-row control model.** When a user taps "on/off" on a
+  channel inside a scene: does that fire a live command and **also**
+  modify the in-memory scene state (so a subsequent Save persists it),
+  or is it a transient "preview" until the user taps Save? Today's
+  desktop app behaves as the latter (Save sends `$SCNSAVE`). I'd keep
+  that model unless you want different mobile behaviour.
 - **D-5 — Min OS support.** Recommend iOS 16+ and Android 10+ (API 29).
-  Anything older balloons the test matrix and gives little payoff.
-- **D-6 — Distribution.** App Store + Play Store, or sideload / MDM only?
-  Public store is the answer if you want non-technical end users to
-  install easily; ad-hoc / TestFlight if this is for a known set of
-  installations.
-- **D-7 — Branding.** Keep "eDin+ Gateway Control" or a new product name
-  for the mobile app? App Store names can't collide with existing ones,
-  so worth checking early.
+- **D-6 — Distribution.** App Store + Play Store, or sideload / MDM
+  only? Public store is the answer for non-technical end users;
+  TestFlight / ad-hoc if this is for a known set of installations.
+- **D-7 — Branding.** Keep "eDin+ Gateway Control" or a new product
+  name for the mobile app? Worth checking App Store name availability
+  early.
 
 ---
 
-## 11. Open questions for protocol verification
+## 12. Open questions for protocol verification
 
-Before Phase 1 ends, confirm these against a live gateway. Each is
-cheap to answer if the gateway is on a desk somewhere:
+Before Phase 2 ends, confirm these against a live NPU:
 
-- Does the gateway advertise itself via mDNS? If so, what service type
-  (`_edin._tcp.local.`?). This determines whether D-1 / Phase 5 mDNS
-  discovery is viable.
-- Confirmed framing of multi-line responses on TCP (`<CR><LF>`-terminated,
-  `;` per record) so the receive buffer's line-splitting logic is right.
-- Maximum response size for `?SCNCHANNAMES` on a large scene — informs
-  whether we need streaming parser or can buffer-then-parse.
 - Does HTTP basic auth (per `gateway_readme.md` §User Management) work as
-  an alternative to the `$User,…;` prefix? If yes, HTTP path becomes a
-  bit cleaner.
+  an alternative to the `$User,…;` prefix? If yes, the auth path gets
+  simpler and we can drop the prefix injection.
+- Confirm framing of multi-line responses on HTTP (newline / semicolon
+  termination) so the parser's line-splitting matches what the NPU
+  actually returns.
+- Maximum response size for `?SCNCHANNAMES` on a large scene — informs
+  whether we need a streaming parser or can buffer-then-parse.
+- Does a single HTTP request return one whole logical response (e.g. a
+  full `?areanames;` listing with many `!AREANAME` lines), or do we
+  need to read multiple HTTP responses to assemble it? The desktop
+  app's TCP-stream parsing assumed continuous bytes; HTTP is
+  request/response.
+- Does the eDin+ NPU advertise itself via mDNS / Bonjour, and if so on
+  what service type? Determines whether D-2 is viable.
 
 ---
 
-## 12. Immediate next steps
+## 13. Immediate next steps
 
 1. You answer D-1 through D-7.
-2. I scaffold Phase 0 (Expo dev-client app, `protocol/` ported to TS,
+2. I scaffold Phase 0 (Expo managed app, `protocol/` ported to TS,
    parser tests passing) on this branch.
-3. We get a real gateway IP / credentials reachable from a dev machine
-   so Phase 1 can validate against truth, not mocks.
-4. From there we run the phases above week by week.
+3. Get a real NPU IP / credentials reachable from a dev machine so
+   Phase 1 can validate against truth, not mocks.
+4. Run the phases above week by week.
