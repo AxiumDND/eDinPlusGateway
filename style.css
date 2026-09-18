@@ -620,8 +620,11 @@ footer {
   }
 
   .sidebar button {
-    min-width: 56px;
-    padding: 6px 4px;
+    min-width: 0;
+    flex: 1;
+    padding: 6px 2px;
+    font-size: 9px;
+    letter-spacing: 0;
   }
 
   .app-main {
