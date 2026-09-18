@@ -1,6 +1,6 @@
 {
   "name": "edin_gateway",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Electron app to send commands to lighting gateway via TCP/IP or HTTP",
   "main": "main.js",
   "scripts": {

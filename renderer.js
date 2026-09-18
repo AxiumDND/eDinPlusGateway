@@ -1427,7 +1427,7 @@ function sendRawCommand(message) {
 // =============================================================================
 // Event Handlers
 // =============================================================================
-window.electronAPI.onLogMessage((message) => {
+if (window.electronAPI && typeof window.electronAPI.onLogMessage === 'function') window.electronAPI.onLogMessage((message) => {
   console.log("DEBUG: UI Log Message Received:", message);
   
   // Handle button state messages
@@ -1523,7 +1523,7 @@ window.electronAPI.onLogMessage((message) => {
   }
 });
 
-window.electronAPI.onLoadSettings((settings) => {
+if (window.electronAPI && typeof window.electronAPI.onLoadSettings === 'function') window.electronAPI.onLoadSettings((settings) => {
   console.log("DEBUG: Loaded settings:", settings);
   if (document.getElementById('ipAddress') && settings.IP_ADDRESS) {
     document.getElementById('ipAddress').value = settings.IP_ADDRESS;
@@ -1554,6 +1554,8 @@ function setLogBarVisible(visible) {
   applyLogBarVisibility(visible);
 }
 
+window.setLogBarVisible = setLogBarVisible;
+
 function formatAppVersion(version) {
   const value = String(version || '').replace(/^v/i, '').trim();
   return value ? 'v' + value : '';
@@ -1573,7 +1575,7 @@ async function loadAppVersion() {
       if (pkg && pkg.version) return pkg.version;
     }
   } catch (err) { /* fall through */ }
-  return '1.4.1';
+  return '1.4.2';
 }
 
 async function applyAppVersion() {
@@ -1583,14 +1585,34 @@ async function applyAppVersion() {
   });
 }
 
+function bindLogBarToggle() {
+  const box = document.getElementById('showLogBar');
+  if (!box || box.dataset.bound === '1') return;
+  box.dataset.bound = '1';
+  box.addEventListener('change', () => setLogBarVisible(box.checked));
+}
+
 function applyLogBarVisibility(visible) {
   const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
   document.body.classList.toggle('log-visible', show);
   const footer = document.getElementById('logBar');
-  if (footer) footer.hidden = !show;
+  if (footer) {
+    footer.hidden = !show;
+    footer.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
+  bindLogBarToggle();
   const box = document.getElementById('showLogBar');
-  if (box) box.checked = show;
+  if (box && box.checked !== show) box.checked = show;
+  if (show) {
+    const logElement = document.getElementById('log');
+    if (logElement && !logElement.childElementCount && !logElement.textContent.trim()) {
+      logMessage('Command log ready — gateway traffic will appear here.');
+    }
+  }
 }
+
+window.applyLogBarVisibility = applyLogBarVisibility;
+window.bindLogBarToggle = bindLogBarToggle;
 
 function logMessage(message, type = "log-message") {
   const logElement = document.getElementById('log');
@@ -1858,7 +1880,9 @@ function rgbToHsl(r, g, b) {
 // =============================================================================
 window.onload = () => {
   console.log("DEBUG: UI Loaded - Fetching Settings...");
-  window.electronAPI.requestSettings();
+  if (window.electronAPI && typeof window.electronAPI.requestSettings === 'function') {
+    window.electronAPI.requestSettings();
+  }
   
   // Initialize color picker buttons
   const initColorPickerButtons = () => {
