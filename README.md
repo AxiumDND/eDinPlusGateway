@@ -34,6 +34,14 @@ npm install
 npm start
 ```
 
+## Tests
+
+Gateway parsing and Control helpers are covered by Node's built-in test runner:
+
+```bash
+npm test
+```
+
 ## Development
 
 This project uses:

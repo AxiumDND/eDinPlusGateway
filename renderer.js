@@ -1,11 +1,18 @@
 // renderer.js
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-function pad(num, size) {
-  return num.toString().padStart(size, '0');
-}
+const {
+  pad,
+  getChannelCategory,
+  getColorType,
+  isOffScene,
+  parseAreaResponse,
+  parseSceneResponse,
+  parseChannelNames,
+  parseChannelStates,
+  sortAreasByOrder,
+  hexToRgb,
+  rgbToHex,
+  sliderFillPercent
+} = window.gatewayProtocol;
 
 function getUserPrefix() {
   const username = document.getElementById('username')
@@ -18,41 +25,6 @@ function getUserPrefix() {
   return `$User,${username},${password};`;
 }
 
-// =============================================================================
-// Determining the Category and Type of Channel
-// =============================================================================
-function getChannelCategory(channelType) {
-  const t = channelType.toUpperCase();
-  console.log(`DEBUG: getChannelCategory called with type: ${channelType} (uppercase: ${t})`);
-  
-  // If it contains "RGB" or "TW" or "COLR", treat as color/temperature
-  if (t.includes("RGB") || t.includes("TW") || t.includes("COLR")) {
-    console.log(`DEBUG: Channel ${channelType} categorized as COLOR`);
-    return "COLOR";
-  }
-  // Otherwise, treat it as a level-based channel
-  console.log(`DEBUG: Channel ${channelType} categorized as LEVEL`);
-  return "LEVEL";
-}
-
-function getColorType(channelType) {
-  const t = channelType.toUpperCase();
-  console.log(`DEBUG: getColorType called with type: ${channelType} (uppercase: ${t})`);
-  
-  if (t.includes("TW")) {
-    console.log(`DEBUG: Channel ${channelType} identified as TW (Tunable White)`);
-    return "TW"; // Tunable White
-  } else if (t.includes("RGBW")) {
-    console.log(`DEBUG: Channel ${channelType} identified as RGBW`);
-    return "RGBW"; // RGBW (RGB + White)
-  } else if (t.includes("RGB")) {
-    console.log(`DEBUG: Channel ${channelType} identified as RGB`);
-    return "RGB"; // RGB only
-  }
-  
-  console.log(`DEBUG: Channel ${channelType} has UNKNOWN color type`);
-  return "UNKNOWN";
-}
 
 // =============================================================================
 // Global Variables for DALI Operations (unchanged)
@@ -90,27 +62,6 @@ function loadAreaNames() {
   sendCommand('?areanames;');
 }
 
-function parseAreaResponse(responseText) {
-  const lines = responseText.split(/[\r\n]+/);
-  const areas = [];
-  lines.forEach(line => {
-    line = line.trim();
-    if (line.startsWith('!AREANAME,')) {
-      if (line.endsWith(';')) {
-        line = line.slice(0, -1);
-      }
-      const parts = line.split(',');
-      if (parts.length >= 5) {
-        const areaNum = parts[1].trim();
-        const areaName = parts[4].trim();
-        if (areaName !== '') {
-          areas.push({ num: areaNum, name: areaName });
-        }
-      }
-    }
-  });
-  return areas;
-}
 
 window.areaUi = window.areaUi || {
   selectedNum: null,
@@ -239,19 +190,13 @@ function persistAreaOrder(areas) {
 }
 
 function applySavedAreaOrder(areas) {
-  let order = [];
+  let order = '';
   try {
-    order = (localStorage.getItem('CONTROL_AREA_ORDER') || '').split(',').filter(Boolean);
+    order = localStorage.getItem('CONTROL_AREA_ORDER') || '';
   } catch (err) {
-    order = [];
+    order = '';
   }
-  if (!order.length) return areas;
-  const rank = new Map(order.map((id, i) => [id, i]));
-  return areas.slice().sort((a, b) => {
-    const ia = rank.has(String(a.num)) ? rank.get(String(a.num)) : 1000;
-    const ib = rank.has(String(b.num)) ? rank.get(String(b.num)) : 1000;
-    return ia - ib;
-  });
+  return sortAreasByOrder(areas, order);
 }
 
 function createAreaTileEl(area) {
@@ -372,159 +317,6 @@ function createAreaTiles(areas) {
   });
 }
 
-function parseSceneResponse(responseText) {
-  const lines = responseText.split(/[\r\n]+/);
-  const scenes = [];
-  lines.forEach(line => {
-    line = line.trim();
-    if (line.startsWith('!SCNNAME,')) {
-      if (line.endsWith(';')) {
-        line = line.slice(0, -1);
-      }
-      const parts = line.split(',');
-      if (parts.length >= 5) {
-        const scnNum = parts[1].trim();
-        const scnName = parts[4].trim();
-        if (scnName !== '') {
-          scenes.push({ num: scnNum, name: scnName });
-        }
-      }
-    }
-  });
-  return scenes;
-}
-
-// =============================================================================
-// Parsing Channel Names & States, Populating the Channel List
-// =============================================================================
-function parseChannelNames(responseText) {
-  console.log("DEBUG: Raw channel names response:", responseText);
-  
-  const channels = [];
-  const lines = responseText.split(/\r?\n/);
-  lines.forEach(line => {
-    line = line.trim();
-    if (line === "") return;
-    
-    // Log each line for debugging
-    console.log("DEBUG: Processing line:", line);
-    
-    if (
-      line.startsWith('!CHANNAME,') ||
-      line.startsWith('!DMXNAME,') ||
-      line.startsWith('!DMXRGBCOLRNAME,') ||
-      line.startsWith('!CHANRGBCOLRNAME,') || // Added CHANRGBCOLRNAME
-      line.startsWith('!DALINAME,') ||
-      line.startsWith('!CHANTWCOLRNAME,')) {
-      if (line.endsWith(';')) {
-        line = line.slice(1, -1);
-      } else {
-        line = line.slice(1);
-      }
-      const parts = line.split(',');
-      if (parts.length >= 7) {
-        const channel = {
-          type: parts[0],   // e.g. "CHANNAME", "DMXNAME", "DALINAME"
-          addr: parts[1],
-          devcode: parts[2],
-          chanNum: parts[3],
-          name: parts.slice(6).join(',')
-        };
-        
-        // Log each parsed channel
-        console.log("DEBUG: Parsed channel:", channel);
-        
-        channels.push(channel);
-      }
-    }
-  });
-  
-  // Debug log to see what channels were parsed
-  console.log("DEBUG: All parsed channels:", channels);
-  
-  return channels;
-}
-
-function parseChannelStates(responseText) {
-  console.log("DEBUG: Raw channel states response:", responseText);
-  
-  const states = [];
-  const lines = responseText.split(/\r?\n/);
-  lines.forEach(line => {
-    line = line.trim();
-    if (!line) return;
-    
-    // Log each line for debugging
-    console.log("DEBUG: Processing state line:", line);
-    
-    // For level channels, the 6th field (index 5) is the level
-    if (
-      line.startsWith('!CHANLEVEL,') ||
-      line.startsWith('!DMXLEVEL,') ||
-      line.startsWith('!DALILEVEL,')
-    ) {
-      if (line.endsWith(';')) line = line.slice(1, -1);
-      else line = line.slice(1);
-      const parts = line.split(',');
-      if (parts.length >= 6) { // Gateway provides at least 6 parts: type,addr,dev,chan,level_0_255,level_percent(,fadetime)
-        let current = parseInt(parts[4], 10); // Use parts[4] for the 0-255 level, not parts[5]
-        if (isNaN(current)) current = 0;
-        if (current > 255) current = 255; // Clamp to 0-255 for levels
-        const state = {
-          type: parts[0],    // e.g. "CHANLEVEL"
-          addr: parts[1],
-          devcode: parts[2],
-          chanNum: parts[3], 
-          current: current
-        };
-        
-        console.log("DEBUG: Parsed level state:", state);
-        states.push(state);
-      }
-    }
-    // For color or temperature channels
-    else if (
-      line.startsWith('!DMXRGBCOLR,') ||
-      line.startsWith('!CHANRGBCOLR,') ||
-      line.startsWith('!CHANTWCOLR,')
-    ) {
-      if (line.endsWith(';')) line = line.slice(1, -1);
-      else line = line.slice(1);
-      const parts = line.split(',');
-      
-      if (parts[0] === 'CHANRGBCOLR' || parts[0] === 'DMXRGBCOLR') {
-        if (parts.length >= 6) { // !CHANRGBCOLR,addr,dev,chan,level,color;
-        const state = {
-          type: parts[0],    
-          addr: parts[1],
-          devcode: parts[2],
-          chanNum: parts[3],
-          current: parts[5], // Color is parts[5]
-          level: parseInt(parts[4], 10) // Level is parts[4]
-        };
-          if (isNaN(state.level) || state.level < 0 || state.level > 255) state.level = 0; // Default & clamp level
-          console.log("DEBUG: Parsed RGB color state:", state);
-        states.push(state);
-        }
-      } else if (parts[0] === 'CHANTWCOLR') {
-        if (parts.length >= 5) { // !CHANTWCOLR,addr,dev,chan,tempK;
-            const state = {
-                type: parts[0],
-                addr: parts[1],
-                devcode: parts[2],
-                chanNum: parts[3],
-                current: parts[4] // e.g., #2700K
-            };
-            console.log("DEBUG: Parsed TW color state:", state);
-            states.push(state);
-        }
-      }
-    }
-  });
-  
-  console.log("DEBUG: All parsed states:", states);
-  return states;
-}
 
 // Add these variables at the top of the file
 let currentRGBChannel = null;
@@ -650,15 +442,6 @@ function hideColorPicker() {
   }
 }
 
-// Helper to convert hex to RGB (ensure this exists or define it)
-function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : null;
-}
 
 // Helper to refresh channel states for the current scene
 function refreshChannelStates() {
@@ -669,20 +452,6 @@ function refreshChannelStates() {
   }
 }
 
-// Helper to convert RGB components to a hex string
-function rgbToHex(r, g, b) {
-  const componentToHex = (c) => {
-    const value = parseInt(c, 10); // Ensure c is treated as a number
-    if (isNaN(value) || value < 0 || value > 255) {
-        // Handle invalid input if necessary, or assume valid input
-        console.warn(`Invalid color component for hex conversion: ${c}`);
-        return '00'; // Default to black component on error
-    }
-    const hex = value.toString(16);
-    return hex.length == 1 ? "0" + hex : hex;
-  };
-  return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
-}
 
 function applyRGBColor(channelDiv, color, brightness) {
   console.log('DEBUG: [applyRGBColor] Called with:', { color, brightness, channelDiv, channelId: channelDiv ? channelDiv.id : 'No ID' });
@@ -839,7 +608,7 @@ function syncSliderFill(slider) {
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) ? max : 100;
   const pct = hi === lo ? 0 : ((val - lo) / (hi - lo)) * 100;
-  slider.style.setProperty('--fill', Math.max(0, Math.min(100, pct)).toFixed(2) + '%');
+  slider.style.setProperty('--fill', sliderFillPercent(lo, hi, val).toFixed(2) + '%');
 }
 
 function bindSliderFill(slider) {
@@ -1239,7 +1008,7 @@ function createSceneButtons(scenes) {
     }
     sceneBtn.addEventListener('click', () => {
       console.log('Scene button clicked:', scene.name, 'with scene number:', scene.num);
-      const isOff = String(scene.name).trim().toLowerCase() === 'off';
+      const isOff = isOffScene(scene);
       if (areaNum) {
         const state = getAreaState(areaNum);
         state.sceneNum = scene.num;
@@ -1321,7 +1090,7 @@ function clearControlSceneChannels() {
 }
 
 function showControlSceneChannels(scene) {
-  const isOff = !scene || String(scene.name || '').trim().toLowerCase() === 'off';
+  const isOff = isOffScene(scene);
   if (isOff) {
     clearControlSceneChannels();
     return;
