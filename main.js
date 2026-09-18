@@ -113,6 +113,8 @@ ipcMain.on('request-settings', (event) => {
   event.reply('load-settings', settings);
 });
 
+ipcMain.handle('get-version', () => app.getVersion());
+
 // Send command (TCP or HTTP) from renderer
 ipcMain.on('send-command', (event, commandObj) => {
   console.log("DEBUG: Main Process Received Command:", commandObj);

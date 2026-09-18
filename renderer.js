@@ -1554,6 +1554,35 @@ function setLogBarVisible(visible) {
   applyLogBarVisibility(visible);
 }
 
+function formatAppVersion(version) {
+  const value = String(version || '').replace(/^v/i, '').trim();
+  return value ? 'v' + value : '';
+}
+
+async function loadAppVersion() {
+  if (window.electronAPI && typeof window.electronAPI.getVersion === 'function') {
+    try {
+      const fromApp = await window.electronAPI.getVersion();
+      if (fromApp) return fromApp;
+    } catch (err) { /* fall through */ }
+  }
+  try {
+    const response = await fetch('package.json', { cache: 'no-store' });
+    if (response.ok) {
+      const pkg = await response.json();
+      if (pkg && pkg.version) return pkg.version;
+    }
+  } catch (err) { /* fall through */ }
+  return '1.4.1';
+}
+
+async function applyAppVersion() {
+  const label = formatAppVersion(await loadAppVersion());
+  document.querySelectorAll('[data-app-version]').forEach(el => {
+    el.textContent = label;
+  });
+}
+
 function applyLogBarVisibility(visible) {
   const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
   document.body.classList.toggle('log-visible', show);

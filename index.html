@@ -16,6 +16,7 @@
   <aside class="sidebar" aria-label="Primary">
     <div class="sidebar-brand" title="eDIN+ Gateway">
       <img src="assets/edin-plus-logo.png" alt="eDIN+" class="sidebar-logo">
+      <p class="sidebar-version" data-app-version>v1.4.1</p>
     </div>
     <nav class="sidebar-nav">
       <button id="area-btn" onclick="showSection('area')">
@@ -215,6 +216,13 @@
     <!-- Area Section — Design Studio Control: grid, then room -->
     <div id="area" class="section area-section" style="display:none;">
       <div id="controlHome" class="control-home">
+        <header class="control-home-bar">
+          <div>
+            <h2>Control</h2>
+            <p class="control-home-sub">Choose a room</p>
+          </div>
+          <p class="app-version" data-app-version>v1.4.1</p>
+        </header>
         <div id="tileContainer" class="control-grid"></div>
       </div>
       <div id="controlRoom" class="control-room" hidden>
@@ -360,6 +368,7 @@
 
     document.addEventListener("DOMContentLoaded", () => {
       if (typeof applyLogBarVisibility === 'function') applyLogBarVisibility();
+      if (typeof applyAppVersion === 'function') applyAppVersion();
       showSection('setup');
       // Populate Fitting ID dropdown (0 to 63)
       const fittingSelect = document.getElementById('dali-fitting-id');
