@@ -64,6 +64,24 @@ let daliFittingEMIdentifyInterval = null;
 let flashDaliFittingInterval = null;
 let flashDaliFittingState = true;
 
+function stepFittingId(delta) {
+  const select = document.getElementById('dali-fitting-id');
+  if (!select || !select.options.length) return;
+  const max = select.options.length - 1;
+  let next = select.selectedIndex + delta;
+  if (next < 0) next = max;
+  if (next > max) next = 0;
+  select.selectedIndex = next;
+}
+
+function incrementFittingId() {
+  stepFittingId(1);
+}
+
+function decrementFittingId() {
+  stepFittingId(-1);
+}
+
 // =============================================================================
 // Area Section Functions
 // =============================================================================
@@ -94,23 +112,263 @@ function parseAreaResponse(responseText) {
   return areas;
 }
 
+window.areaUi = window.areaUi || {
+  selectedNum: null,
+  selectedName: null,
+  byArea: {},
+  areas: [],
+  view: 'home'
+};
+
+function getAreaState(areaNum) {
+  if (!window.areaUi.byArea[areaNum]) {
+    window.areaUi.byArea[areaNum] = { on: false, sceneName: '', sceneNum: null };
+  }
+  return window.areaUi.byArea[areaNum];
+}
+
+function findArea(areaNum) {
+  return (window.areaUi.areas || []).find(a => String(a.num) === String(areaNum));
+}
+
+function showControlHome() {
+  window.areaUi.view = 'home';
+  const home = document.getElementById('controlHome');
+  const room = document.getElementById('controlRoom');
+  if (home) home.hidden = false;
+  if (room) room.hidden = true;
+  clearControlSceneChannels();
+  if (window.areaUi.areas && window.areaUi.areas.length) {
+    createAreaTiles(window.areaUi.areas);
+  }
+}
+
+function showControlRoom(area) {
+  window.areaUi.view = 'room';
+  const home = document.getElementById('controlHome');
+  const room = document.getElementById('controlRoom');
+  if (home) home.hidden = true;
+  if (room) room.hidden = false;
+  const nameEl = document.getElementById('controlRoomName');
+  if (nameEl) nameEl.textContent = area.name;
+  refreshRoomHeader(area.num);
+}
+
+function refreshRoomHeader(areaNum) {
+  const state = getAreaState(areaNum);
+  const sceneEl = document.getElementById('controlRoomScene');
+  if (sceneEl) {
+    sceneEl.textContent = state.on && state.sceneName ? state.sceneName : '';
+  }
+  const power = document.getElementById('controlRoomPower');
+  if (power) {
+    power.classList.toggle('on', state.on);
+    power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+  }
+}
+
+function selectArea(area) {
+  window.areaUi.selectedNum = String(area.num);
+  window.areaUi.selectedName = area.name;
+  showControlRoom(area);
+  const areaNumInt = parseInt(area.num, 10);
+  const scenePanel = document.getElementById('scenePanel');
+  if (scenePanel) {
+    scenePanel.innerHTML = '<div class="area-empty">Loading scenes…</div>';
+  }
+  if (typeof sendCommand === 'function') {
+    sendCommand(`?SCNNAMES,${areaNumInt};`);
+  }
+  if (typeof window.createDemoScenes === 'function') {
+    window.createDemoScenes();
+  }
+}
+
+function toggleAreaPower(area, event) {
+  if (event) event.stopPropagation();
+  const state = getAreaState(area.num);
+  const sceneNum = state.sceneNum;
+  if (state.on) {
+    state.on = false;
+    if (sceneNum && typeof sendCommand === 'function') {
+      sendCommand(`$SCNOFF,${sceneNum};`);
+    }
+  } else {
+    state.on = true;
+    if (sceneNum && typeof sendCommand === 'function') {
+      sendCommand(`$SCNRECALL,${sceneNum};`);
+    }
+  }
+  refreshAreaTile(area.num);
+  if (window.areaUi.selectedNum === String(area.num)) {
+    refreshRoomHeader(area.num);
+    document.querySelectorAll('.scene-button').forEach(btn => {
+      btn.classList.toggle('active', state.on && btn.dataset.sceneNum === String(state.sceneNum));
+    });
+    if (state.on && state.sceneNum) {
+      showControlSceneChannels({ num: state.sceneNum, name: state.sceneName || 'Scene' });
+    } else {
+      clearControlSceneChannels();
+    }
+  }
+}
+
+function refreshAreaTile(areaNum) {
+  const tile = document.querySelector(`.area-tile[data-area-num="${areaNum}"]`);
+  if (!tile) return;
+  const state = getAreaState(areaNum);
+  tile.classList.toggle('is-on', state.on);
+  tile.classList.toggle('is-off', !state.on);
+  const sceneEl = tile.querySelector('.area-tile-scene');
+  if (sceneEl) {
+    sceneEl.textContent = state.on && state.sceneName ? state.sceneName : '';
+  }
+  const power = tile.querySelector('.area-power');
+  if (power) {
+    power.classList.toggle('on', state.on);
+    power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+  }
+}
+
+function persistAreaOrder(areas) {
+  try {
+    localStorage.setItem('CONTROL_AREA_ORDER', areas.map(a => String(a.num)).join(','));
+  } catch (err) {
+    console.warn('Could not persist area order', err);
+  }
+}
+
+function applySavedAreaOrder(areas) {
+  let order = [];
+  try {
+    order = (localStorage.getItem('CONTROL_AREA_ORDER') || '').split(',').filter(Boolean);
+  } catch (err) {
+    order = [];
+  }
+  if (!order.length) return areas;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return areas.slice().sort((a, b) => {
+    const ia = rank.has(String(a.num)) ? rank.get(String(a.num)) : 1000;
+    const ib = rank.has(String(b.num)) ? rank.get(String(b.num)) : 1000;
+    return ia - ib;
+  });
+}
+
+function createAreaTileEl(area) {
+  const state = getAreaState(area.num);
+  const tile = document.createElement('div');
+  tile.className = 'area-tile' + (state.on ? ' is-on' : ' is-off');
+  tile.setAttribute('role', 'button');
+  tile.tabIndex = 0;
+  tile.draggable = true;
+  tile.dataset.areaNum = String(area.num);
+
+  const copy = document.createElement('div');
+  copy.className = 'area-tile-copy';
+  const name = document.createElement('div');
+  name.className = 'area-tile-name';
+  name.textContent = area.name;
+  const scene = document.createElement('div');
+  scene.className = 'area-tile-scene';
+  scene.textContent = state.on && state.sceneName ? state.sceneName : '';
+  copy.appendChild(name);
+  copy.appendChild(scene);
+
+  const power = document.createElement('button');
+  power.type = 'button';
+  power.className = 'area-power' + (state.on ? ' on' : '');
+  power.setAttribute('aria-label', 'Toggle ' + area.name);
+  power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+  power.addEventListener('click', (event) => toggleAreaPower(area, event));
+
+  tile.appendChild(copy);
+  tile.appendChild(power);
+  tile.addEventListener('click', () => {
+    console.log('Tile clicked:', area.name, 'with area number:', area.num);
+    selectArea(area);
+  });
+  tile.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectArea(area);
+    }
+  });
+  tile.addEventListener('dragstart', (event) => {
+    event.dataTransfer.setData('text/plain', String(area.num));
+    tile.classList.add('dragging');
+  });
+  tile.addEventListener('dragend', () => tile.classList.remove('dragging'));
+  tile.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    tile.classList.add('drag-over');
+  });
+  tile.addEventListener('dragleave', () => tile.classList.remove('drag-over'));
+  tile.addEventListener('drop', (event) => {
+    event.preventDefault();
+    tile.classList.remove('drag-over');
+    const fromId = event.dataTransfer.getData('text/plain');
+    const toId = String(area.num);
+    if (!fromId || fromId === toId) return;
+    const list = window.areaUi.areas.slice();
+    const fromIdx = list.findIndex(a => String(a.num) === fromId);
+    const toIdx = list.findIndex(a => String(a.num) === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    window.areaUi.areas = list;
+    persistAreaOrder(list);
+    createAreaTiles(list);
+  });
+  return tile;
+}
+
 function createAreaTiles(areas) {
   const container = document.getElementById('tileContainer');
   if (!container) {
     console.error('Tile container not found!');
     return;
   }
+  const ordered = applySavedAreaOrder(areas);
+  window.areaUi.areas = ordered;
   container.innerHTML = '';
-  areas.forEach(area => {
-    const btn = document.createElement('button');
-    btn.classList.add('tile-button');
-    btn.textContent = area.name;
-    btn.addEventListener('click', () => {
-      console.log('Tile clicked:', area.name, 'with area number:', area.num);
-      const areaNumInt = parseInt(area.num, 10);
-      sendCommand(`?SCNNAMES,${areaNumInt};`);
-    });
-    container.appendChild(btn);
+  if (!ordered.length) {
+    const empty = document.createElement('div');
+    empty.className = 'area-empty';
+    empty.textContent = 'No areas yet. Connect the gateway and open Control to load names.';
+    container.appendChild(empty);
+    return;
+  }
+
+  const hasZones = ordered.some(a => a.zone);
+  if (!hasZones) {
+    container.className = 'control-grid';
+    ordered.forEach(area => container.appendChild(createAreaTileEl(area)));
+    return;
+  }
+
+  container.className = 'control-zones';
+  const zones = [];
+  ordered.forEach(area => {
+    const zoneName = area.zone || 'Areas';
+    let zone = zones.find(z => z.name === zoneName);
+    if (!zone) {
+      zone = { name: zoneName, areas: [] };
+      zones.push(zone);
+    }
+    zone.areas.push(area);
+  });
+  zones.forEach(zone => {
+    const block = document.createElement('section');
+    block.className = 'control-zone';
+    const heading = document.createElement('h3');
+    heading.className = 'control-zone-title';
+    heading.textContent = zone.name;
+    const grid = document.createElement('div');
+    grid.className = 'control-grid';
+    zone.areas.forEach(area => grid.appendChild(createAreaTileEl(area)));
+    block.appendChild(heading);
+    block.appendChild(grid);
+    container.appendChild(block);
   });
 }
 
@@ -573,122 +831,207 @@ function updateBrightness(e) {
   }
 }
 
-// Modify the populateChannelList function to use the new RGB control UI
-function populateChannelList(channels) {
-  const channelList = document.getElementById('channelList');
+function syncSliderFill(slider) {
+  if (!slider || slider.type !== 'range') return;
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const val = parseFloat(slider.value);
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : 100;
+  const pct = hi === lo ? 0 : ((val - lo) / (hi - lo)) * 100;
+  slider.style.setProperty('--fill', Math.max(0, Math.min(100, pct)).toFixed(2) + '%');
+}
+
+function bindSliderFill(slider) {
+  if (!slider) return;
+  slider.classList.add('ds-slider');
+  slider.addEventListener('input', () => syncSliderFill(slider));
+  syncSliderFill(slider);
+}
+
+function createChannelFlashButton(channelDiv) {
+  const flash = document.createElement('button');
+  flash.type = 'button';
+  flash.className = 'channel-flash-btn';
+  flash.textContent = 'Flash';
+  flash.addEventListener('click', () => {
+    flash.classList.add('is-on');
+    sendOneChannelLevel(channelDiv);
+    setTimeout(() => flash.classList.remove('is-on'), 350);
+  });
+  return flash;
+}
+
+function createChannelNudgeGroup(getSlider) {
+  const group = document.createElement('div');
+  group.className = 'channel-nudge-group';
+
+  const nudgeDown = document.createElement('button');
+  nudgeDown.type = 'button';
+  nudgeDown.classList.add('nudge-button');
+  nudgeDown.textContent = '−';
+  nudgeDown.title = 'Decrease level';
+  nudgeDown.addEventListener('click', () => {
+    const slider = getSlider();
+    nudgeSlider(slider, -1);
+    const row = slider && slider.closest('.channel-item');
+    if (row) sendOneChannelLevel(row);
+  });
+
+  const nudgeToggle = document.createElement('button');
+  nudgeToggle.type = 'button';
+  nudgeToggle.classList.add('nudge-toggle');
+  nudgeToggle.textContent = nudgeIncrement + '%';
+  nudgeToggle.title = `Click to switch to ${nudgeIncrement === 5 ? '1' : '5'}% increments`;
+  nudgeToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleNudgeIncrement();
+  });
+
+  const nudgeUp = document.createElement('button');
+  nudgeUp.type = 'button';
+  nudgeUp.classList.add('nudge-button');
+  nudgeUp.textContent = '+';
+  nudgeUp.title = 'Increase level';
+  nudgeUp.addEventListener('click', () => {
+    const slider = getSlider();
+    nudgeSlider(slider, 1);
+    const row = slider && slider.closest('.channel-item');
+    if (row) sendOneChannelLevel(row);
+  });
+
+  group.appendChild(nudgeDown);
+  group.appendChild(nudgeToggle);
+  group.appendChild(nudgeUp);
+  return group;
+}
+
+function populateChannelList(channels, targetId) {
+  const channelList = document.getElementById(targetId || 'channelList');
+  if (!channelList) return;
   channelList.innerHTML = '';
   
   channels.forEach(channel => {
     const channelDiv = document.createElement('div');
     channelDiv.classList.add('channel-item');
     
-    // Populate all necessary dataset attributes
     channelDiv.dataset.channelNum = channel.chanNum;
     channelDiv.dataset.addr = channel.addr;
     channelDiv.dataset.devcode = channel.devcode;
-    channelDiv.dataset.type = channel.type; // e.g., "CHANNAME", "DMXRGBCOLRNAME"
+    channelDiv.dataset.type = channel.type;
     channelDiv.dataset.category = getChannelCategory(channel.type);
     channelDiv.dataset.colortype = getColorType(channel.type);
-    
-    // Create channel name display
+
     const nameSpan = document.createElement('span');
+    nameSpan.className = 'channel-view-name';
     nameSpan.textContent = channel.name;
-    nameSpan.style.flex = '1';
     channelDiv.appendChild(nameSpan);
-    
-    // For RGB channels, add color preview and brightness slider
-    if (channel.type.includes('RGB') || channel.type.includes('COLR')) {
+
+    const colorType = getColorType(channel.type);
+    const sliderContainer = document.createElement('div');
+    sliderContainer.classList.add('slider-container');
+
+    if (colorType === 'RGB' || colorType === 'RGBW') {
       const colorPreview = document.createElement('div');
       colorPreview.classList.add('color-preview');
-      colorPreview.style.width = '30px';
-      colorPreview.style.height = '30px';
-      colorPreview.style.marginRight = '10px';
-      colorPreview.style.cursor = 'pointer';
       colorPreview.onclick = () => showColorPicker(channelDiv);
-      channelDiv.appendChild(colorPreview);
-      
-      const brightnessContainer = document.createElement('div');
-      brightnessContainer.style.flex = '1';
-      brightnessContainer.style.margin = '0 10px';
-      
+      sliderContainer.appendChild(colorPreview);
+
       const brightnessSlider = document.createElement('input');
       brightnessSlider.type = 'range';
       brightnessSlider.min = '0';
       brightnessSlider.max = '100';
       brightnessSlider.value = '100';
       brightnessSlider.classList.add('rgb-brightness-slider');
-      brightnessSlider.oninput = (e) => {
-        const brightness = e.target.value;
+      brightnessSlider.addEventListener('input', (e) => {
         const color = colorPreview.style.backgroundColor || '#FF0000';
-        applyRGBColor(channelDiv, color, brightness);
-      };
-      brightnessContainer.appendChild(brightnessSlider);
-      channelDiv.appendChild(brightnessContainer);
+        applyRGBColor(channelDiv, color, e.target.value);
+      });
+      brightnessSlider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      bindSliderFill(brightnessSlider);
+      sliderContainer.appendChild(brightnessSlider);
+
+      const percentSpan = document.createElement('span');
+      percentSpan.classList.add('color-value', 'channel-percentage');
+      percentSpan.textContent = '100%';
+      brightnessSlider.addEventListener('input', () => {
+        percentSpan.textContent = brightnessSlider.value + '%';
+      });
+      sliderContainer.appendChild(percentSpan);
+      channelDiv.appendChild(sliderContainer);
+      channelDiv.appendChild(createChannelFlashButton(channelDiv));
+      channelDiv.appendChild(createChannelNudgeGroup(() => channelDiv.querySelector('.rgb-brightness-slider')));
+    } else if (colorType === 'TW') {
+      const tempSlider = document.createElement('input');
+      tempSlider.type = 'range';
+      tempSlider.min = '1800';
+      tempSlider.max = '6500';
+      tempSlider.step = '100';
+      tempSlider.value = '3000';
+      tempSlider.classList.add('temp-slider', 'channel-slider');
+      const tempValue = document.createElement('span');
+      tempValue.classList.add('temp-value', 'channel-percentage');
+      tempValue.textContent = '3000K';
+      tempSlider.addEventListener('input', () => {
+        tempValue.textContent = tempSlider.value + 'K';
+      });
+      tempSlider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      bindSliderFill(tempSlider);
+      sliderContainer.appendChild(tempSlider);
+      sliderContainer.appendChild(tempValue);
+      channelDiv.appendChild(sliderContainer);
+      channelDiv.appendChild(createChannelFlashButton(channelDiv));
+      channelDiv.appendChild(createChannelNudgeGroup(() => channelDiv.querySelector('.temp-slider')));
     } else {
-      // For regular channels, add level slider and nudge buttons
-      const sliderContainer = document.createElement('div');
-      sliderContainer.classList.add('slider-container');
-      
-      const nudgeDown = document.createElement('button');
-      nudgeDown.classList.add('nudge-button');
-      nudgeDown.textContent = '-';
-      nudgeDown.title = 'Decrease level';
-      nudgeDown.addEventListener('click', () => {
-        const slider = channelDiv.querySelector('.channel-slider');
-        nudgeSlider(slider, -1);
-      });
-      
-      const nudgeToggle = document.createElement('button');
-      nudgeToggle.classList.add('nudge-toggle');
-      nudgeToggle.textContent = nudgeIncrement + '%';
-      nudgeToggle.title = `Click to switch to ${nudgeIncrement === 5 ? '1' : '5'}% increments`;
-      nudgeToggle.addEventListener('click', toggleNudgeIncrement);
-      
-      const nudgeUp = document.createElement('button');
-      nudgeUp.classList.add('nudge-button');
-      nudgeUp.textContent = '+';
-      nudgeUp.title = 'Increase level';
-      nudgeUp.addEventListener('click', () => {
-        const slider = channelDiv.querySelector('.channel-slider');
-        nudgeSlider(slider, 1);
-      });
-      
       const slider = document.createElement('input');
       slider.type = 'range';
       slider.min = '0';
       slider.max = '255';
       slider.value = '0';
       slider.classList.add('channel-slider');
-      
+
       const percentSpan = document.createElement('span');
       percentSpan.classList.add('channel-percentage');
       percentSpan.textContent = '0%';
-      
       slider.addEventListener('input', () => {
-        const percent = Math.round((parseInt(slider.value, 10) / 255) * 100);
-        percentSpan.textContent = percent + '%';
+        percentSpan.textContent = Math.round((parseInt(slider.value, 10) / 255) * 100) + '%';
       });
-      
-      sliderContainer.appendChild(nudgeDown);
-      sliderContainer.appendChild(nudgeToggle);
-      sliderContainer.appendChild(nudgeUp);
+      slider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      bindSliderFill(slider);
+
       sliderContainer.appendChild(slider);
       sliderContainer.appendChild(percentSpan);
       channelDiv.appendChild(sliderContainer);
+      channelDiv.appendChild(createChannelFlashButton(channelDiv));
+      channelDiv.appendChild(createChannelNudgeGroup(() => channelDiv.querySelector('.channel-slider')));
     }
     
     channelList.appendChild(channelDiv);
   });
 }
 
-function nudgeSlider(slider, deltaPercent) {
-  let currentPercent = Math.round((parseInt(slider.value, 10) / 255) * 100);
-  let newPercent = currentPercent + (deltaPercent * nudgeIncrement);
-  if (newPercent < 0) newPercent = 0;
-  if (newPercent > 100) newPercent = 100;
-  let newValue = Math.round((newPercent / 100) * 255);
-  slider.value = newValue;
+function nudgeSlider(slider, deltaSteps) {
+  if (!slider) return;
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const current = parseFloat(slider.value) || 0;
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : 255;
+  if (slider.classList.contains('temp-slider')) {
+    const span = hi - lo;
+    let next = current + (deltaSteps * nudgeIncrement / 100) * span;
+    next = Math.round(next / 100) * 100;
+    slider.value = Math.max(lo, Math.min(hi, next));
+    slider.dispatchEvent(new Event('input'));
+    return;
+  }
+  const currentPercent = Math.round(((current - lo) / (hi - lo)) * 100);
+  let newPercent = currentPercent + (deltaSteps * nudgeIncrement);
+  newPercent = Math.max(0, Math.min(100, newPercent));
+  slider.value = Math.round(lo + (newPercent / 100) * (hi - lo));
   slider.dispatchEvent(new Event('input'));
+  syncSliderFill(slider);
 }
 
 function updateChannelControls(states) {
@@ -733,9 +1076,12 @@ function updateChannelControls(states) {
         firstStateProcessed = true;
     }
     
-    const channelDiv = currentChannelListElement ? currentChannelListElement.querySelector(selector) : document.querySelector(selector);
-    // Fallback to document.querySelector if currentChannelListElement somehow became null, though unlikely with current structure.
+    const matches = document.querySelectorAll(selector);
+    matches.forEach(channelDiv => updateOneChannelControl(channelDiv, state));
+  });
+}
 
+function updateOneChannelControl(channelDiv, state) {
     console.log(`DEBUG: [updateChannelControls] For state (addr=${state.addr}, dev=${state.devcode}, chan=${state.chanNum}), found channelDiv:`, channelDiv);
     
     if (channelDiv && channelDiv.dataset) { // Log the dataset of the found div for verification
@@ -748,13 +1094,18 @@ function updateChannelControls(states) {
       
       if (category === "LEVEL") {
         const slider = channelDiv.querySelector('.channel-slider');
+        const percent = Math.round((state.current / 255) * 100);
         if (slider) {
           slider.value = state.current;
-          const percent = Math.round((state.current / 255) * 100);
-          const percSpan = channelDiv.querySelector('.channel-percentage');
-          if (percSpan) {
-            percSpan.textContent = percent + "%";
-          }
+          syncSliderFill(slider);
+        }
+        const percSpan = channelDiv.querySelector('.channel-percentage');
+        if (percSpan) {
+          percSpan.textContent = percent + "%";
+        }
+        const meterFill = channelDiv.querySelector('.channel-level-fill');
+        if (meterFill) {
+          meterFill.style.width = Math.max(0, Math.min(100, percent)) + "%";
         }
       }
       else if (category === "COLOR") {
@@ -822,21 +1173,20 @@ function updateChannelControls(states) {
           const tempSlider = channelDiv.querySelector('.temp-slider');
           const tempValueSpan = channelDiv.querySelector('.temp-value');
           
-          if (tempSlider && state.current) {
+          if (state.current) {
             // Extract the temperature value from the format "#1800K"
-            let tempValue = state.current;
-            if (tempValue.includes('K')) {
-              // Extract the numeric part before 'K'
-              const tempMatch = tempValue.match(/(\d+)K/);
-              if (tempMatch && tempMatch[1]) {
-                const temp = parseInt(tempMatch[1], 10);
-                if (!isNaN(temp) && temp >= 1800 && temp <= 6500) {
+            let tempValue = String(state.current);
+            const tempMatch = tempValue.match(/(\d+)K/);
+            if (tempMatch && tempMatch[1]) {
+              const temp = parseInt(tempMatch[1], 10);
+              if (!isNaN(temp) && temp >= 1800 && temp <= 6500) {
+                if (tempSlider) {
                   tempSlider.value = temp;
-                  tempSlider.dispatchEvent(new Event('input')); // Trigger the input event to update display
-                  
-                  if (tempValueSpan) {
-                    tempValueSpan.textContent = `${temp}K`;
-                  }
+                  tempSlider.dispatchEvent(new Event('input'));
+                  syncSliderFill(tempSlider);
+                }
+                if (tempValueSpan) {
+                  tempValueSpan.textContent = `${temp}K`;
                 }
               }
             }
@@ -851,44 +1201,150 @@ function updateChannelControls(states) {
         }
       }
     }
-  });
 }
 
 // =============================================================================
 // Scene Buttons
 // =============================================================================
 function createSceneButtons(scenes) {
-  const container = document.querySelector('.areawindowright');
+  const container = document.getElementById('scenePanel') || document.querySelector('.scene-grid');
   if (!container) {
     console.error('Scene container not found!');
     return;
   }
   container.innerHTML = '';
+
+  if (!scenes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'area-empty';
+    empty.textContent = 'No named scenes in this area.';
+    container.appendChild(empty);
+    clearControlSceneChannels();
+    return;
+  }
+
+  const areaNum = window.areaUi.selectedNum;
+  const areaState = areaNum ? getAreaState(areaNum) : null;
+
   scenes.forEach(scene => {
     const sceneContainer = document.createElement('div');
     sceneContainer.classList.add('scene-item');
-    
+
     const sceneBtn = document.createElement('button');
     sceneBtn.classList.add('scene-button');
+    sceneBtn.dataset.sceneNum = String(scene.num);
     sceneBtn.textContent = scene.name;
+    if (areaState && areaState.on && String(areaState.sceneNum) === String(scene.num)) {
+      sceneBtn.classList.add('active');
+    }
     sceneBtn.addEventListener('click', () => {
       console.log('Scene button clicked:', scene.name, 'with scene number:', scene.num);
-      sendCommand(`$SCNRECALL,${scene.num};`);
+      const isOff = String(scene.name).trim().toLowerCase() === 'off';
+      if (areaNum) {
+        const state = getAreaState(areaNum);
+        state.sceneNum = scene.num;
+        if (isOff) {
+          state.on = false;
+          state.sceneName = '';
+          if (typeof sendCommand === 'function') {
+            sendCommand(`$SCNOFF,${scene.num};`);
+          }
+        } else {
+          state.on = true;
+          state.sceneName = scene.name;
+          if (typeof sendCommand === 'function') {
+            sendCommand(`$SCNRECALL,${scene.num};`);
+          }
+        }
+        refreshAreaTile(areaNum);
+        refreshRoomHeader(areaNum);
+      }
+      container.querySelectorAll('.scene-button').forEach(btn => btn.classList.remove('active'));
+      if (!isOff) sceneBtn.classList.add('active');
+      showControlSceneChannels(scene);
     });
-    
+
     const editBtn = document.createElement('button');
     editBtn.classList.add('scene-edit-button');
-    editBtn.textContent = '⚙︎';
+    editBtn.setAttribute('aria-label', 'Adjust ' + scene.name);
+    editBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17.2V20h2.8l8.2-8.2-2.8-2.8L4 17.2zm13.6-8.2c.3-.3.3-.8 0-1.1l-1.5-1.5c-.3-.3-.8-.3-1.1 0l-1.2 1.2 2.8 2.8 1-1.4z" fill="currentColor"/></svg>';
     editBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       console.log('Edit button clicked for scene:', scene);
       openSceneEditModal(scene);
     });
-    
+
     sceneContainer.appendChild(sceneBtn);
     sceneContainer.appendChild(editBtn);
     container.appendChild(sceneContainer);
   });
+
+  if (areaState && areaState.on && areaState.sceneNum) {
+    const active = scenes.find(s => String(s.num) === String(areaState.sceneNum));
+    if (active) showControlSceneChannels(active);
+    else clearControlSceneChannels();
+  } else {
+    clearControlSceneChannels();
+  }
+}
+
+function getDemoSceneChannels(scene) {
+  const presets = {
+    '11': { levels: [200, 90], tw: '#2200K', rgb: '#FF8A3D' },
+    '12': { levels: [255, 210], tw: '#4000K', rgb: '#FFF4E0' },
+    '21': { levels: [170, 50], tw: '#2000K', rgb: '#FF6A00' },
+    '22': { levels: [230, 190], tw: '#4500K', rgb: '#FFE8B0' }
+  };
+  const preset = presets[String(scene && scene.num)] || { levels: [180, 120], tw: '#3000K', rgb: '#FFAA55' };
+  return {
+    channels: [
+      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '001', name: 'Downlights' },
+      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '002', name: 'Pendants' },
+      { type: 'CHANTWCOLRNAME', addr: '001', devcode: '17', chanNum: '003', name: 'Cove TW' },
+      { type: 'CHANRGBCOLRNAME', addr: '001', devcode: '17', chanNum: '004', name: 'Feature RGB' }
+    ],
+    states: [
+      { addr: '001', devcode: '12', chanNum: '001', current: preset.levels[0] },
+      { addr: '001', devcode: '12', chanNum: '002', current: preset.levels[1] },
+      { addr: '001', devcode: '17', chanNum: '003', current: preset.tw },
+      { addr: '001', devcode: '17', chanNum: '004', current: preset.rgb }
+    ]
+  };
+}
+
+function clearControlSceneChannels() {
+  window.viewingScene = null;
+  const section = document.getElementById('controlChannelSection');
+  const list = document.getElementById('controlChannelList');
+  if (section) section.hidden = true;
+  if (list) list.innerHTML = '';
+}
+
+function showControlSceneChannels(scene) {
+  const isOff = !scene || String(scene.name || '').trim().toLowerCase() === 'off';
+  if (isOff) {
+    clearControlSceneChannels();
+    return;
+  }
+
+  window.viewingScene = scene;
+  const section = document.getElementById('controlChannelSection');
+  if (section) section.hidden = false;
+
+  const list = document.getElementById('controlChannelList');
+  if (list && !list.querySelector('.channel-item')) {
+    list.innerHTML = '<div class="area-empty">Loading channels…</div>';
+  }
+
+  if (typeof sendCommand === 'function') {
+    sendCommand(`?SCNCHANNAMES,${scene.num};`);
+  }
+
+  if (typeof window.createDemoScenes === 'function') {
+    const demo = getDemoSceneChannels(scene);
+    populateChannelList(demo.channels, 'controlChannelList');
+    updateChannelControls(demo.states);
+  }
 }
 
 // =============================================================================
@@ -914,7 +1370,11 @@ function openSceneEditModal(scene) {
     sendCommand(`?SCNCHANNAMES,${scene.num};`);
   }, 500);
   
-  // REMOVED: setTimeout(() => { sendCommand(`?SCNCHANSTATES,${scene.num};`); }, 1100);
+  if (typeof window.createDemoScenes === 'function') {
+    const demo = getDemoSceneChannels(scene);
+    populateChannelList(demo.channels, 'channelList');
+    updateChannelControls(demo.states);
+  }
 }
 
 function closeSceneEditModal() {
@@ -948,10 +1408,19 @@ function saveSceneAndClose() {
  * Sends channel commands for each channel in the modal.
  * Fade time is hard-coded to 1000ms for now (you can make it user-configurable).
  */
-function sendSceneChannelLevels() {
-  const channelDivs = document.querySelectorAll('#channelList .channel-item');
-  const fadeTime = 1000; // Hard-coded example fade time
-  channelDivs.forEach(div => {
+function flashControlSceneChannels() {
+  sendSceneChannelLevels('#controlChannelList');
+}
+
+function sendSceneChannelLevels(listSelector) {
+  const channelDivs = document.querySelectorAll((listSelector || '#channelList') + ' .channel-item');
+  channelDivs.forEach(div => sendOneChannelLevel(div));
+}
+
+function sendOneChannelLevel(div) {
+  if (!div) return;
+  const fadeTime = 1000;
+  {
     const category = div.dataset.category;      // "LEVEL" or "COLOR"
     const colorType = div.dataset.colortype;    // "RGB", "TW", or "UNKNOWN"
     const type = div.dataset.type.toUpperCase(); // e.g. "CHANNAME", "DMXNAME", "DALINAME", "DMXRGBCOLRNAME", "CHANRGBCOLRNAME"
@@ -1059,7 +1528,7 @@ function sendSceneChannelLevels() {
       // Add a small delay if sending two commands for the same DMX channel to avoid overwhelming the gateway
       setTimeout(() => sendCommand(brightnessCmd), 50); 
     }
-  });
+  }
 }
 
 // =============================================================================
@@ -1242,13 +1711,21 @@ window.electronAPI.onLogMessage((message) => {
       message.includes("!CHANTWCOLRNAME,")) {
     const channels = parseChannelNames(message);
     if(channels.length > 0) {
-      populateChannelList(channels);
-      // NOW that the channel list is populated, request the states for these channels.
-      if (window.currentEditingScene && window.currentEditingScene.num) {
-        console.log("DEBUG: [onLogMessage for SCNCHANNAMES] Channel list populated. Requesting SCNCHANSTATES for scene:", window.currentEditingScene.num);
-        sendCommand(`?SCNCHANSTATES,${window.currentEditingScene.num};`);
+      const modal = document.getElementById('sceneEditModal');
+      const modalOpen = modal && modal.style.display === 'flex';
+      if (modalOpen) {
+        populateChannelList(channels, 'channelList');
+      }
+      if (window.viewingScene && window.areaUi.view === 'room') {
+        populateChannelList(channels, 'controlChannelList');
+      }
+      const sceneNum = (modalOpen && window.currentEditingScene && window.currentEditingScene.num)
+        || (window.viewingScene && window.viewingScene.num);
+      if (sceneNum) {
+        console.log("DEBUG: [onLogMessage for SCNCHANNAMES] Channel list populated. Requesting SCNCHANSTATES for scene:", sceneNum);
+        sendCommand(`?SCNCHANSTATES,${sceneNum};`);
       } else {
-        console.warn("DEBUG: [onLogMessage for SCNCHANNAMES] Cannot request SCNCHANSTATES, currentEditingScene or num is missing.");
+        console.warn("DEBUG: [onLogMessage for SCNCHANNAMES] Cannot request SCNCHANSTATES, no active scene.");
       }
     }
   }
@@ -1293,6 +1770,30 @@ window.electronAPI.onLoadSettings((settings) => {
 // =============================================================================
 // Logging & Startup
 // =============================================================================
+function isLogBarVisible() {
+  try {
+    return localStorage.getItem('SHOW_LOG_BAR') === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function setLogBarVisible(visible) {
+  try {
+    localStorage.setItem('SHOW_LOG_BAR', visible ? '1' : '0');
+  } catch (err) { /* ignore */ }
+  applyLogBarVisibility(visible);
+}
+
+function applyLogBarVisibility(visible) {
+  const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
+  document.body.classList.toggle('log-visible', show);
+  const footer = document.getElementById('logBar');
+  if (footer) footer.hidden = !show;
+  const box = document.getElementById('showLogBar');
+  if (box) box.checked = show;
+}
+
 function logMessage(message, type = "log-message") {
   const logElement = document.getElementById('log');
   if (!logElement) {
@@ -1304,7 +1805,7 @@ function logMessage(message, type = "log-message") {
   newMessage.textContent = message;
   logElement.appendChild(newMessage);
   const logContainer = document.getElementById('log-container');
-  logContainer.scrollTop = logContainer.scrollHeight;
+  if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
 }
 
 function clearLog() {
@@ -1770,6 +2271,7 @@ window.onload = () => {
   const channelLevel = document.getElementById('channel-level');
   const display = document.getElementById('channel-level-display');
   if (channelLevel && display) {
+    bindSliderFill(channelLevel);
     channelLevel.addEventListener('input', function () {
       display.textContent = channelLevel.value;
     });
@@ -2080,3 +2582,8 @@ let tunableWhiteColors = {
   neutral: '#FFFFFF', // White (middle)
   warm: '#FEB833'     // rgb(254,184,51)
 };
+
+function toggleSelectedRoomPower(event) {
+  const area = findArea(window.areaUi.selectedNum);
+  if (area) toggleAreaPower(area, event);
+}

@@ -3,21 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>eDin+ Gateway Control</title>
+  <title>eDIN+ Gateway Control</title>
+  <link rel="icon" type="image/png" href="assets/edin-plus-icon-32.png">
+  <link rel="apple-touch-icon" href="assets/edin-plus-icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>eDin+ Gateway Control</h1>
-    <nav>
-      <button id="setup-btn" onclick="showSection('setup')">Setup</button>
-      <button id="keypad-btn" onclick="showSection('keypad')">Keypad</button>
-      <button id="channel-btn" onclick="showSection('channel')">Channel</button>
-      <button id="dali-btn" onclick="showSection('dali')">Dali</button>
-      <button id="area-btn" onclick="showSection('area')">Area</button>
+  <div class="app-shell">
+  <aside class="sidebar" aria-label="Primary">
+    <div class="sidebar-brand" title="eDIN+ Gateway">
+      <img src="assets/edin-plus-logo.png" alt="eDIN+" class="sidebar-logo">
+    </div>
+    <nav class="sidebar-nav">
+      <button id="area-btn" onclick="showSection('area')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        <span>Control</span>
+      </button>
+      <button id="channel-btn" onclick="showSection('channel')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16h4V8h3v10H4zM13 18h4V6h3v14h-7z" fill="currentColor"/></svg>
+        <span>Adjust</span>
+      </button>
+      <button id="dali-btn" onclick="showSection('dali')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7V18h8v-2.3A7 7 0 0 0 12 3zm-3 17h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z" fill="currentColor"/></svg>
+        <span>DALI</span>
+      </button>
+      <button id="keypad-btn" onclick="showSection('keypad')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="1.6"/><circle cx="12" cy="7" r="1.6"/><circle cx="17" cy="7" r="1.6"/><circle cx="7" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="17" cy="12" r="1.6"/><circle cx="7" cy="17" r="1.6"/><circle cx="12" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/></svg>
+        <span>Keypad</span>
+      </button>
     </nav>
-  </header>
+    <div class="sidebar-footer">
+      <button id="setup-btn" onclick="showSection('setup')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zm8.1 2.6-1.7-.3a6.7 6.7 0 0 0-.6-1.5l1-1.4-1.4-1.4-1.4 1a6.7 6.7 0 0 0-1.5-.6l-.3-1.7h-2l-.3 1.7a6.7 6.7 0 0 0-1.5.6l-1.4-1-1.4 1.4 1 1.4a6.7 6.7 0 0 0-.6 1.5l-1.7.3v2l1.7.3c.1.5.3 1 .6 1.5l-1 1.4 1.4 1.4 1.4-1c.5.3 1 .5 1.5.6l.3 1.7h2l.3-1.7c.5-.1 1-.3 1.5-.6l1.4 1 1.4-1.4-1-1.4c.3-.5.5-1 .6-1.5l1.7-.3v-2z" fill="currentColor"/></svg>
+        <span>Setup</span>
+      </button>
+    </div>
+  </aside>
 
+  <div class="app-main">
   <main>
     <!-- Setup Section -->
     <div id="setup" class="section">
@@ -44,6 +70,12 @@
       <input type="password" id="password" placeholder="mode1234">
 
       <button onclick="saveSettings()">Save Settings</button>
+
+      <h2>Diagnostics</h2>
+      <label class="log-toggle" for="showLogBar">
+        <input type="checkbox" id="showLogBar" onchange="setLogBarVisible(this.checked)">
+        Show command log
+      </label>
       
       <h2>Test Connection</h2>
       <button onclick="testConnection()">Test Connection</button>
@@ -139,67 +171,108 @@
 
     <!-- Dali Section -->
     <div id="dali" class="section" style="display:none;">
-      <label for="dali-ubc">UBC Address:</label>
-      <input type="text" id="dali-ubc" value="001" maxlength="3" size="3">
-      <br><br>
-      <button id="dali-broadcast-btn" onclick="toggleDaliBroadcast()">Start EM Identify Broadcast</button>
-      <br><br>
-      <button id="dali-bst-btn" onclick="toggleDaliBST()">Start Dali BST</button>
-      <br><br>
-      <button onclick="sendDaliOn()">Dali On</button>
-      <button onclick="sendDaliOff()">Dali Off</button>
-      <hr>
-      <h3>Fitting Commands</h3>
-      <label for="dali-fitting-id">Fitting ID:</label>
-      <select id="dali-fitting-id"></select>
-      <button onclick="decrementFittingId()">-</button>
-      <button onclick="incrementFittingId()">+</button>
-      <br><br>
-      <button id="dali-fitting-emidentify-btn" onclick="toggleDaliFittingEMIdentify()">EM Identify</button>
-      <button onclick="sendDaliFittingFunctionTest()">Function Test</button>
-      <button id="dali-fitting-flash-btn" onclick="toggleDaliFittingFlash()">Flash Dali Fitting</button>
+      <div class="section-heading">
+        <h2>DALI Loop</h2>
+        <p class="section-lede">Broadcast, BST, and per-fitting identify — same commissioning rhythm as Design Studio.</p>
+      </div>
+      <div class="ds-grid">
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>Universe / UBC</h3>
+            <span class="ds-chip">Loop</span>
+          </header>
+          <label for="dali-ubc">UBC Address</label>
+          <input type="text" id="dali-ubc" value="001" maxlength="3" size="3">
+          <div class="ds-actions">
+            <button id="dali-broadcast-btn" class="ds-btn" onclick="toggleDaliBroadcast()">Start EM Identify Broadcast</button>
+            <button id="dali-bst-btn" class="ds-btn" onclick="toggleDaliBST()">Start DALI BST</button>
+            <button class="ds-btn ds-btn-on" onclick="sendDaliOn()">DALI On</button>
+            <button class="ds-btn ds-btn-off" onclick="sendDaliOff()">DALI Off</button>
+          </div>
+        </section>
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>Fitting</h3>
+            <span class="ds-chip">0–63</span>
+          </header>
+          <div class="fitting-row">
+            <label for="dali-fitting-id">Fitting ID</label>
+            <div class="fitting-id-controls">
+              <button type="button" class="ds-nudge" onclick="decrementFittingId()" aria-label="Previous fitting">−</button>
+              <select id="dali-fitting-id"></select>
+              <button type="button" class="ds-nudge" onclick="incrementFittingId()" aria-label="Next fitting">+</button>
+            </div>
+          </div>
+          <div class="ds-actions">
+            <button id="dali-fitting-emidentify-btn" class="ds-btn" onclick="toggleDaliFittingEMIdentify()">EM Identify</button>
+            <button class="ds-btn" onclick="sendDaliFittingFunctionTest()">Function Test</button>
+            <button id="dali-fitting-flash-btn" class="ds-btn ds-btn-accent" onclick="toggleDaliFittingFlash()">Flash Fitting</button>
+          </div>
+        </section>
+      </div>
     </div>
 
-    <!-- Area Section -->
-    <div id="area" class="section" style="display:none;">
-      <div class="area-container">
-        <!-- Left side: dynamically generated area tiles -->
-        <div class="areawindowLeft" id="tileContainer"></div>
-        <!-- Right side: scene buttons for the selected area -->
-        <div class="areawindowright"></div>
+    <!-- Area Section — Design Studio Control: grid, then room -->
+    <div id="area" class="section area-section" style="display:none;">
+      <div id="controlHome" class="control-home">
+        <div id="tileContainer" class="control-grid"></div>
+      </div>
+      <div id="controlRoom" class="control-room" hidden>
+        <header class="room-header">
+          <button type="button" id="controlBack" class="room-back" aria-label="Back to areas" onclick="showControlHome()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5 8 12l7.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="room-title-block">
+            <h2 id="controlRoomName">Room</h2>
+            <p id="controlRoomScene" class="room-scene-caption"></p>
+          </div>
+          <button type="button" id="controlRoomPower" class="area-power" aria-label="Toggle room" onclick="toggleSelectedRoomPower(event)"></button>
+        </header>
+        <h3 class="control-subhead">Scenes</h3>
+        <div id="scenePanel" class="scene-grid"></div>
+        <section id="controlChannelSection" class="control-channels" hidden>
+          <div class="control-channels-head">
+            <h3 class="control-subhead">Channels</h3>
+            <button type="button" class="ds-btn" id="controlFlashBtn" onclick="flashControlSceneChannels()">Flash</button>
+          </div>
+          <div id="controlChannelList"></div>
+        </section>
       </div>
     </div>
   </main>
 
-  <footer>
+  <footer id="logBar" hidden>
     <div id="log-container">
       <pre id="log"></pre>
     </div>
   </footer>
+  </div><!-- .app-main -->
+  </div><!-- .app-shell -->
 
-  <!-- Modal Overlay for Scene Edit (hidden by default) -->
-  <div id="sceneEditModal" class="modal-overlay" style="display:none;">
-    <div class="modal-content">
-      <h2>Edit Scene</h2>
-      <p><strong>Scene ID:</strong> <span id="modalSceneId"></span></p>
-      <p><strong>Scene Name:</strong> <span id="modalSceneName"></span></p>
-      
-      <!-- Global control buttons -->
+  <!-- Adjustments-style scene editor -->
+  <div id="sceneEditModal" class="adjust-overlay" style="display:none;">
+    <div class="adjust-sheet">
+      <header class="adjust-header">
+        <button type="button" id="modalCloseButton" class="room-back" aria-label="Cancel" onclick="closeSceneEditModal()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5 8 12l7.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="adjust-title">
+          <p class="adjust-kicker">Adjust</p>
+          <h2 id="modalSceneName">Scene</h2>
+          <p class="adjust-meta">Scene <span id="modalSceneId"></span></p>
+        </div>
+        <div class="adjust-actions">
+          <button type="button" id="modalSendButton" class="ds-btn">Flash</button>
+          <button type="button" id="modalSaveButton" class="ds-btn ds-btn-on">Save</button>
+        </div>
+      </header>
       <div id="globalControls" class="global-controls">
-        <button id="allOffButton" class="global-button">ALL OFF</button>
-        <button id="allOnButton" class="global-button">ALL ON</button>
-        <button id="nudgeAllDownButton" class="global-button">-5% ALL</button>
-        <button id="nudgeAllUpButton" class="global-button">+5% ALL</button>
+        <button id="allOffButton" class="global-button">All off</button>
+        <button id="allOnButton" class="global-button">All on</button>
+        <button id="nudgeAllDownButton" class="global-button">−5%</button>
+        <button id="nudgeAllUpButton" class="global-button">+5%</button>
       </div>
-      
-      <!-- Container for the list of channels -->
       <div id="channelList"></div>
-      <div class="modal-buttons">
-        <!-- New "Send" button next to Save and Close -->
-        <button id="modalSendButton">Send</button>
-        <button id="modalSaveButton">Save</button>
-        <button id="modalCloseButton">Close</button>
-      </div>
     </div>
   </div>
 
@@ -272,16 +345,20 @@
     function showSection(sectionId) {
       document.querySelectorAll('.section').forEach(section => section.style.display = 'none');
       document.getElementById(sectionId).style.display = 'block';
-      document.querySelectorAll("nav button").forEach(btn => btn.classList.remove("active"));
+      document.querySelectorAll(".sidebar button").forEach(btn => btn.classList.remove("active"));
       document.getElementById(sectionId + "-btn").classList.add("active");
       
       // If the Area section is activated, load the area names.
       if (sectionId === 'area') {
-        loadAreaNames();
+        if (typeof showControlHome === 'function') showControlHome();
+        if (window.electronAPI && !new URLSearchParams(location.search).has('preview')) {
+          loadAreaNames();
+        }
       }
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+      if (typeof applyLogBarVisibility === 'function') applyLogBarVisibility();
       showSection('setup');
       // Populate Fitting ID dropdown (0 to 63)
       const fittingSelect = document.getElementById('dali-fitting-id');
@@ -290,6 +367,35 @@
         option.value = i;
         option.text = i;
         fittingSelect.appendChild(option);
+      }
+
+      // Browser / no-gateway preview so Control tiles can be reviewed without a live NPU.
+      if (!window.electronAPI || new URLSearchParams(location.search).has('preview')) {
+        const demoAreas = [
+          { num: '1', name: 'Kitchen', zone: 'Ground' },
+          { num: '2', name: 'Living Room', zone: 'Ground' },
+          { num: '3', name: 'Dining', zone: 'Ground' },
+          { num: '4', name: 'Hall', zone: 'Ground' },
+          { num: '5', name: 'Landing', zone: 'First floor' },
+          { num: '6', name: 'Study', zone: 'First floor' },
+          { num: '7', name: 'Bedroom', zone: 'First floor' }
+        ];
+        getAreaState('1').on = true;
+        getAreaState('1').sceneName = 'Evening';
+        getAreaState('1').sceneNum = '11';
+        getAreaState('2').on = true;
+        getAreaState('2').sceneName = 'Day';
+        getAreaState('2').sceneNum = '22';
+        createAreaTiles(demoAreas);
+        const demoScenes = {
+          '1': [{ num: '11', name: 'Evening' }, { num: '12', name: 'Cook' }, { num: '13', name: 'Off' }],
+          '2': [{ num: '21', name: 'Evening' }, { num: '22', name: 'Day' }, { num: '23', name: 'Off' }],
+          default: [{ num: '91', name: 'Evening' }, { num: '92', name: 'Day' }, { num: '93', name: 'Off' }]
+        };
+        window.createDemoScenes = function () {
+          const key = window.areaUi.selectedNum;
+          createSceneButtons(demoScenes[key] || demoScenes.default);
+        };
       }
     });
   </script>
