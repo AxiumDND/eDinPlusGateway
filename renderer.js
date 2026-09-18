@@ -64,6 +64,24 @@ let daliFittingEMIdentifyInterval = null;
 let flashDaliFittingInterval = null;
 let flashDaliFittingState = true;
 
+function stepFittingId(delta) {
+  const select = document.getElementById('dali-fitting-id');
+  if (!select || !select.options.length) return;
+  const max = select.options.length - 1;
+  let next = select.selectedIndex + delta;
+  if (next < 0) next = max;
+  if (next > max) next = 0;
+  select.selectedIndex = next;
+}
+
+function incrementFittingId() {
+  stepFittingId(1);
+}
+
+function decrementFittingId() {
+  stepFittingId(-1);
+}
+
 // =============================================================================
 // Area Section Functions
 // =============================================================================

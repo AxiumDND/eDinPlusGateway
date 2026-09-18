@@ -526,6 +526,27 @@ footer {
   align-items: center;
 }
 
+@media (max-width: 800px) {
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .app-nav {
+    justify-content: flex-start;
+  }
+
+  .area-container {
+    flex-direction: column;
+  }
+
+  .areawindowLeft,
+  .areawindowright {
+    max-width: 100%;
+    min-height: 220px;
+  }
+}
+
 /* New Styles for the Full–Window Modal Overlay */
 .modal-overlay {
   position: fixed;
