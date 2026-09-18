@@ -9,7 +9,6 @@
   --sidebar-width: clamp(152px, 16vw, 228px);
   --sidebar-icon: clamp(32px, 3.2vw, 46px);
   --sidebar-label: clamp(12px, 1.25vw, 15px);
-  --pagebar-height: 56px;
   --bg: #101216;
   --bg-raised: #161a20;
   --bg-header: #0c0e12;
@@ -75,13 +74,6 @@ body {
   height: auto;
 }
 
-.page-logo {
-  display: block;
-  height: 34px;
-  width: auto;
-  margin-right: 14px;
-  flex-shrink: 0;
-}
 
 .sidebar-nav,
 .sidebar-footer {
@@ -139,32 +131,6 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-}
-
-.page-bar {
-  background: var(--bg-header);
-  color: var(--text);
-  padding: 12px 22px;
-  display: flex;
-  align-items: center;
-  min-height: var(--pagebar-height);
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
-.brand-text h1 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.brand-sub {
-  margin: 2px 0 0;
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .app-nav {
@@ -247,6 +213,26 @@ footer {
   z-index: 100;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+footer[hidden] {
+  display: none !important;
+}
+
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.log-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--yellow);
 }
 
 /* Log container styles */

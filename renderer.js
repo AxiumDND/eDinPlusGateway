@@ -865,7 +865,11 @@ function createChannelNudgeGroup(getSlider) {
   nudgeToggle.classList.add('nudge-toggle');
   nudgeToggle.textContent = nudgeIncrement + '%';
   nudgeToggle.title = `Click to switch to ${nudgeIncrement === 5 ? '1' : '5'}% increments`;
-  nudgeToggle.addEventListener('click', toggleNudgeIncrement);
+  nudgeToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleNudgeIncrement();
+  });
 
   const nudgeUp = document.createElement('button');
   nudgeUp.type = 'button';
@@ -1742,6 +1746,30 @@ window.electronAPI.onLoadSettings((settings) => {
 // =============================================================================
 // Logging & Startup
 // =============================================================================
+function isLogBarVisible() {
+  try {
+    return localStorage.getItem('SHOW_LOG_BAR') === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function setLogBarVisible(visible) {
+  try {
+    localStorage.setItem('SHOW_LOG_BAR', visible ? '1' : '0');
+  } catch (err) { /* ignore */ }
+  applyLogBarVisibility(visible);
+}
+
+function applyLogBarVisibility(visible) {
+  const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
+  document.body.classList.toggle('log-visible', show);
+  const footer = document.getElementById('logBar');
+  if (footer) footer.hidden = !show;
+  const box = document.getElementById('showLogBar');
+  if (box) box.checked = show;
+}
+
 function logMessage(message, type = "log-message") {
   const logElement = document.getElementById('log');
   if (!logElement) {
@@ -1753,7 +1781,7 @@ function logMessage(message, type = "log-message") {
   newMessage.textContent = message;
   logElement.appendChild(newMessage);
   const logContainer = document.getElementById('log-container');
-  logContainer.scrollTop = logContainer.scrollHeight;
+  if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
 }
 
 function clearLog() {

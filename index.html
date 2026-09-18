@@ -44,14 +44,6 @@
   </aside>
 
   <div class="app-main">
-  <header class="page-bar">
-    <img src="assets/edin-plus-logo.png" alt="eDIN+" class="page-logo">
-    <div class="brand-text">
-      <h1>Gateway</h1>
-      <p class="brand-sub">Control · Commission</p>
-    </div>
-  </header>
-
   <main>
     <!-- Setup Section -->
     <div id="setup" class="section">
@@ -78,6 +70,12 @@
       <input type="password" id="password" placeholder="mode1234">
 
       <button onclick="saveSettings()">Save Settings</button>
+
+      <h2>Diagnostics</h2>
+      <label class="log-toggle" for="showLogBar">
+        <input type="checkbox" id="showLogBar" onchange="setLogBarVisible(this.checked)">
+        Show command log
+      </label>
       
       <h2>Test Connection</h2>
       <button onclick="testConnection()">Test Connection</button>
@@ -243,7 +241,7 @@
     </div>
   </main>
 
-  <footer>
+  <footer id="logBar" hidden>
     <div id="log-container">
       <pre id="log"></pre>
     </div>
@@ -360,6 +358,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+      if (typeof applyLogBarVisibility === 'function') applyLogBarVisibility();
       showSection('setup');
       // Populate Fitting ID dropdown (0 to 63)
       const fittingSelect = document.getElementById('dali-fitting-id');
