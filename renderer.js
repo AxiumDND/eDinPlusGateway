@@ -1167,8 +1167,8 @@ function createSceneButtons(scenes) {
 
     const editBtn = document.createElement('button');
     editBtn.classList.add('scene-edit-button');
-    editBtn.setAttribute('aria-label', 'Edit ' + scene.name);
-    editBtn.textContent = '⚙︎';
+    editBtn.setAttribute('aria-label', 'Adjust ' + scene.name);
+    editBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17.2V20h2.8l8.2-8.2-2.8-2.8L4 17.2zm13.6-8.2c.3-.3.3-.8 0-1.1l-1.5-1.5c-.3-.3-.8-.3-1.1 0l-1.2 1.2 2.8 2.8 1-1.4z" fill="currentColor"/></svg>';
     editBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       console.log('Edit button clicked for scene:', scene);
@@ -1204,7 +1204,14 @@ function openSceneEditModal(scene) {
     sendCommand(`?SCNCHANNAMES,${scene.num};`);
   }, 500);
   
-  // REMOVED: setTimeout(() => { sendCommand(`?SCNCHANSTATES,${scene.num};`); }, 1100);
+  if (typeof window.createDemoScenes === 'function') {
+    populateChannelList([
+      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '001', name: 'Downlights' },
+      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '002', name: 'Pendants' },
+      { type: 'CHANTWCOLRNAME', addr: '001', devcode: '17', chanNum: '003', name: 'Cove TW' },
+      { type: 'CHANRGBCOLRNAME', addr: '001', devcode: '17', chanNum: '004', name: 'Feature RGB' }
+    ]);
+  }
 }
 
 function closeSceneEditModal() {

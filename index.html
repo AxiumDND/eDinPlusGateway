@@ -242,29 +242,30 @@
   </div><!-- .app-main -->
   </div><!-- .app-shell -->
 
-  <!-- Modal Overlay for Scene Edit (hidden by default) -->
-  <div id="sceneEditModal" class="modal-overlay" style="display:none;">
-    <div class="modal-content">
-      <h2>Edit Scene</h2>
-      <p><strong>Scene ID:</strong> <span id="modalSceneId"></span></p>
-      <p><strong>Scene Name:</strong> <span id="modalSceneName"></span></p>
-      
-      <!-- Global control buttons -->
+  <!-- Adjustments-style scene editor -->
+  <div id="sceneEditModal" class="adjust-overlay" style="display:none;">
+    <div class="adjust-sheet">
+      <header class="adjust-header">
+        <button type="button" id="modalCloseButton" class="room-back" aria-label="Cancel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5 8 12l7.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="adjust-title">
+          <p class="adjust-kicker">Adjust</p>
+          <h2 id="modalSceneName">Scene</h2>
+          <p class="adjust-meta">Scene <span id="modalSceneId"></span></p>
+        </div>
+        <div class="adjust-actions">
+          <button type="button" id="modalSendButton" class="ds-btn">Flash</button>
+          <button type="button" id="modalSaveButton" class="ds-btn ds-btn-on">Save</button>
+        </div>
+      </header>
       <div id="globalControls" class="global-controls">
-        <button id="allOffButton" class="global-button">ALL OFF</button>
-        <button id="allOnButton" class="global-button">ALL ON</button>
-        <button id="nudgeAllDownButton" class="global-button">-5% ALL</button>
-        <button id="nudgeAllUpButton" class="global-button">+5% ALL</button>
+        <button id="allOffButton" class="global-button">All off</button>
+        <button id="allOnButton" class="global-button">All on</button>
+        <button id="nudgeAllDownButton" class="global-button">−5%</button>
+        <button id="nudgeAllUpButton" class="global-button">+5%</button>
       </div>
-      
-      <!-- Container for the list of channels -->
       <div id="channelList"></div>
-      <div class="modal-buttons">
-        <!-- New "Send" button next to Save and Close -->
-        <button id="modalSendButton">Send</button>
-        <button id="modalSaveButton">Save</button>
-        <button id="modalCloseButton">Close</button>
-      </div>
     </div>
   </div>
 

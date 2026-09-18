@@ -6,7 +6,9 @@
 
 :root {
   --log-height: 200px;
-  --sidebar-width: 88px;
+  --sidebar-width: clamp(108px, 11vw, 148px);
+  --sidebar-icon: clamp(26px, 2.4vw, 34px);
+  --sidebar-label: clamp(11px, 1.05vw, 13px);
   --pagebar-height: 56px;
   --bg: #101216;
   --bg-raised: #161a20;
@@ -50,7 +52,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 14px 8px 12px;
+  padding: clamp(16px, 2vw, 22px) clamp(8px, 1vw, 12px) 16px;
   position: fixed;
   top: 0;
   left: 0;
@@ -62,12 +64,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 18px;
+  gap: 8px;
+  margin-bottom: clamp(18px, 2.5vw, 28px);
 }
 
 .sidebar-brand-name {
-  font-size: 10px;
+  font-size: var(--sidebar-label);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -75,9 +77,9 @@ body {
 }
 
 .brand-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: clamp(32px, 3vw, 42px);
+  height: clamp(32px, 3vw, 42px);
+  border-radius: 12px;
   background: linear-gradient(135deg, var(--yellow) 0%, #c9a00e 55%, var(--blue) 100%);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
 }
@@ -86,7 +88,7 @@ body {
 .sidebar-footer {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: clamp(8px, 1vw, 12px);
   width: 100%;
 }
 
@@ -99,25 +101,25 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 7px;
   width: 100%;
   margin: 0;
-  padding: 10px 4px;
+  padding: clamp(12px, 1.4vw, 16px) 6px;
   font-family: inherit;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--sidebar-label);
+  font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   background: transparent;
   color: var(--muted);
   border: none;
-  border-radius: 12px;
+  border-radius: 18px;
   cursor: pointer;
 }
 
 .sidebar button svg {
-  width: 22px;
-  height: 22px;
+  width: var(--sidebar-icon);
+  height: var(--sidebar-icon);
   fill: currentColor;
 }
 
@@ -523,8 +525,8 @@ footer {
 
 .scene-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
 }
 
 .area-power::after {
@@ -634,9 +636,8 @@ footer {
 }
 
 .scene-item {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
+  position: relative;
+  display: block;
 }
 
 @media (max-width: 800px) {
@@ -647,13 +648,19 @@ footer {
   .sidebar {
     flex-direction: row;
     width: 100%;
-    height: 64px;
+    height: 76px;
     top: auto;
     bottom: 0;
     left: 0;
-    padding: 6px 8px;
+    padding: 8px 10px;
     border-right: none;
     border-top: 1px solid var(--border);
+  }
+
+  .adjust-overlay,
+  .modal-overlay {
+    left: 0;
+    bottom: 76px;
   }
 
   .sidebar-brand {
@@ -683,7 +690,7 @@ footer {
 
   .app-main {
     margin-left: 0;
-    padding-bottom: 64px;
+    padding-bottom: 76px;
   }
 
   .control-grid {
@@ -696,31 +703,73 @@ footer {
 }
 
 /* New Styles for the Full–Window Modal Overlay */
+.adjust-overlay,
 .modal-overlay {
   position: fixed;
   top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0,0,0,0.8);
+  left: var(--sidebar-width);
+  right: 0;
+  bottom: 0;
+  background: var(--bg);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   z-index: 1000;
   pointer-events: auto;
 }
 
+.adjust-sheet,
 .modal-content {
-  background: var(--bg-card);
+  background: var(--bg);
   color: var(--text);
-  padding: 22px;
-  width: 80%;
-  max-width: 1000px;
-  border-radius: 16px;
+  padding: 22px 28px 28px;
+  width: 100%;
+  max-width: none;
+  border-radius: 0;
   max-height: 100%;
   overflow-y: auto;
-  margin: 20px 0;
-  border: 1px solid var(--border);
+  margin: 0;
+  border: none;
+}
+
+.adjust-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.adjust-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.adjust-kicker {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.adjust-title h2 {
+  margin: 4px 0 2px;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.adjust-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.adjust-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .modal-content h2 {
@@ -736,11 +785,11 @@ footer {
 .channel-item {
   display: flex;
   align-items: center;
-  padding: 8px;
-  margin: 4px 0;
-  background: #2a2a2a;
-  border-radius: 4px;
-  gap: 10px;
+  padding: 14px 16px;
+  margin: 8px 0;
+  background: #1a1e26;
+  border-radius: 16px;
+  gap: 12px;
 }
 
 .channel-item span {
@@ -834,11 +883,11 @@ footer {
 }
 
 .nudge-button {
-  width: 30px;
-  height: 30px;
-  border-radius: 4px;
-  border: 1px solid #666;
-  background: #444;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: none;
+  background: #2a303c;
   color: #fff;
   font-size: 18px;
   font-weight: bold;
@@ -974,16 +1023,19 @@ footer {
 
 
 .scene-button {
-  flex: 1;
-  min-height: 56px;
+  width: 100%;
+  min-height: 72px;
+  padding: 0 48px 0 18px;
   color: var(--text);
   background: #222833;
   border: none;
-  border-radius: 16px;
+  border-radius: 20px;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 650;
+  letter-spacing: -0.02em;
   cursor: pointer;
+  text-align: left;
 }
 
 .scene-button.active {
@@ -992,35 +1044,55 @@ footer {
 }
 
 .scene-edit-button {
-  width: 40px;
-  min-height: 56px;
-  color: var(--muted);
-  background: #222833;
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  color: inherit;
+  background: rgba(0,0,0,0.18);
   border: none;
-  border-radius: 16px;
+  border-radius: 12px;
   cursor: pointer;
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.scene-button.active + .scene-edit-button,
+.scene-item:has(.scene-button.active) .scene-edit-button {
+  color: #1a1400;
+  background: rgba(26, 20, 0, 0.12);
+}
+
+.scene-edit-button svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* Global control buttons in scene edit modal */
 .global-controls {
   display: flex;
-  justify-content: space-between;
-  margin: 15px 0;
-  padding: 10px;
-  background-color: #222;
-  border-radius: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  background: none;
+  border-radius: 0;
 }
 
 .global-button {
-  padding: 8px 12px;
-  margin: 0 5px;
-  background-color: #444;
-  color: #afafaf;
-  border: 1px solid rgb(185, 185, 185);
-  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 0;
+  background: #222833;
+  color: var(--text);
+  border: none;
+  border-radius: 12px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 650;
+  font-family: inherit;
 }
 
 .global-button:hover {
