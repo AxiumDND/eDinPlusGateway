@@ -2065,18 +2065,6 @@ window.onload = () => {
     });
   }
 
-  const controlBack = document.getElementById('controlBack');
-  if (controlBack) {
-    controlBack.addEventListener('click', showControlHome);
-  }
-  const controlRoomPower = document.getElementById('controlRoomPower');
-  if (controlRoomPower) {
-    controlRoomPower.addEventListener('click', (event) => {
-      const area = findArea(window.areaUi.selectedNum);
-      if (area) toggleAreaPower(area, event);
-    });
-  }
-
   showSection('setup');
   
   // Populate Fitting ID dropdown (0 to 63)
@@ -2383,19 +2371,7 @@ let tunableWhiteColors = {
   warm: '#FEB833'     // rgb(254,184,51)
 };
 
-document.addEventListener('DOMContentLoaded', function bindControlChrome() {
-  const controlBack = document.getElementById('controlBack');
-  if (controlBack) {
-    controlBack.addEventListener('click', function (event) {
-      event.preventDefault();
-      showControlHome();
-    });
-  }
-  const controlRoomPower = document.getElementById('controlRoomPower');
-  if (controlRoomPower) {
-    controlRoomPower.addEventListener('click', function (event) {
-      const area = findArea(window.areaUi.selectedNum);
-      if (area) toggleAreaPower(area, event);
-    });
-  }
-});
+function toggleSelectedRoomPower(event) {
+  const area = findArea(window.areaUi.selectedNum);
+  if (area) toggleAreaPower(area, event);
+}
