@@ -1575,7 +1575,7 @@ async function loadAppVersion() {
       if (pkg && pkg.version) return pkg.version;
     }
   } catch (err) { /* fall through */ }
-  return '1.4.2';
+  return '';
 }
 
 async function applyAppVersion() {

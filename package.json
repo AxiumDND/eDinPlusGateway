@@ -7,8 +7,9 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win",
-    "build": "electron-builder build --win --publish never"
+    "dist": "electron-builder --win portable --x64 -c.win.signAndEditExecutable=false --publish never",
+    "build": "electron-builder --win portable --x64 -c.win.signAndEditExecutable=false --publish never",
+    "changelog": "node scripts/changelog-notes.js"
   },
   "devDependencies": {
     "electron": "^27.0.0",
@@ -24,11 +25,15 @@
     "win": {
       "target": [
         {
-          "target": "msi",
+          "target": "portable",
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "eDIN-Plus-Gateway-Control-${version}.exe"
     },
     "msi": {
       "upgradeCode": "2A5B3CA4-1234-5678-ABCD-E12345678901",

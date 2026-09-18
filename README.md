@@ -1,63 +1,66 @@
-# eDin+ Gateway Control
+# eDIN+ Gateway Control
 
-A web-based control interface for eDin+ Gateway devices. This application provides a user-friendly interface for configuring and controlling eDin+ Gateway systems, including keypad configuration, channel control, DALI management, and area/scene control.
+Desktop app (Electron) for talking to an eDIN+ / Mode lighting gateway over HTTP or TCP port 26: rooms, scenes, channels, DALI, and keypad.
 
-## Features
+**Current version:** 1.4.2 — [release notes](CHANGELOG.md)
 
-- Gateway Setup and Configuration
-- Keypad Configuration and Control
-- Channel Fade Control
-- DALI Device Management
-- Area and Scene Management
-- Real-time Command Testing
+## Download
 
-## Prerequisites
+The Windows portable exe is the supported build. No installer.
 
-- Node.js (v14 or higher)
-- npm (comes with Node.js)
+- **Latest:** https://github.com/AxiumDND/eDinPlusGateway/releases/latest
+- **Windows exe:** [eDIN-Plus-Gateway-Control-1.4.2.exe](https://github.com/AxiumDND/eDinPlusGateway/releases/download/v1.4.2/eDIN-Plus-Gateway-Control-1.4.2.exe)
 
-## Installation
+Unpacked Windows/Linux zips and source are attached on the same release page.
 
-1. Clone the repository:
+## Run from source
+
 ```bash
-git clone [repository-url]
-cd edinplus-gateway-control
-```
-
-2. Install dependencies:
-```bash
+git clone https://github.com/AxiumDND/eDinPlusGateway.git
+cd eDinPlusGateway
 npm install
-```
-
-3. Start the application:
-```bash
 npm start
 ```
 
-## Tests
+Preview the UI in a browser (no gateway, demo rooms):
 
-Gateway parsing and Control helpers are covered by Node's built-in test runner:
+```bash
+npx --yes serve -l 8765
+# open http://127.0.0.1:8765/index.html?preview=1
+```
+
+Requires Node.js 18+ (CI uses 22).
+
+## Tests
 
 ```bash
 npm test
 ```
 
-## Development
+GitHub Actions runs the same suite on every push to `main` and on pull requests.
 
-This project uses:
-- HTML5 for structure
-- CSS3 for styling
-- JavaScript for functionality
-- Electron for desktop application packaging
+## Release a new version
+
+1. Bump **only** `package.json` / `package-lock.json` (the UI reads `app.getVersion()` in the exe, or `package.json` in preview).
+2. Add a `## [X.Y.Z]` section at the top of `CHANGELOG.md`.
+3. Merge to `main` and wait for Tests to pass.
+4. Tag and push:
+
+   ```bash
+   git tag -a vX.Y.Z -m "eDIN+ Gateway Control X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+5. The **Release** workflow builds the portable Windows exe, zips, `SHA256SUMS.txt`, and publishes the GitHub Release.
+
+Do not attach hand-built binaries unless CI cannot run. The primary artifact name is:
+
+`eDIN-Plus-Gateway-Control-X.Y.Z.exe`
+
+## Docs
+
+Gateway protocol PDFs are in `GatewayPDFs/`. Command helpers live in `gateway-protocol.js`.
 
 ## License
 
-[License Type] - See LICENSE file for details
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request 
+MIT — see [LICENSE](LICENSE).

@@ -1,0 +1,34 @@
+name: Bug in the app or exe
+description: Something in eDIN+ Gateway Control does not work as expected
+labels: [bug]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Windows exe
+        - Linux build
+        - Running from source (npm start)
+        - Browser preview (?preview=1)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown under the sidebar logo (for example v1.4.2)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Command log
+      description: Tick Show command log on Setup if you can, then paste relevant lines.

@@ -1,0 +1,15 @@
+name: Enhancement
+description: A change to Control, Adjust, DALI, Setup, or packaging
+labels: [enhancement]
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What should change
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it helps
+      description: Optional. Who uses it and what is painful today.
