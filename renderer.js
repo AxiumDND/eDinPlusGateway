@@ -2271,6 +2271,7 @@ window.onload = () => {
   const channelLevel = document.getElementById('channel-level');
   const display = document.getElementById('channel-level-display');
   if (channelLevel && display) {
+    bindSliderFill(channelLevel);
     channelLevel.addEventListener('input', function () {
       display.textContent = channelLevel.value;
     });
