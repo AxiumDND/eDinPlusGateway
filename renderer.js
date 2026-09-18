@@ -831,6 +831,24 @@ function updateBrightness(e) {
   }
 }
 
+function syncSliderFill(slider) {
+  if (!slider || slider.type !== 'range') return;
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const val = parseFloat(slider.value);
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : 100;
+  const pct = hi === lo ? 0 : ((val - lo) / (hi - lo)) * 100;
+  slider.style.setProperty('--fill', Math.max(0, Math.min(100, pct)).toFixed(2) + '%');
+}
+
+function bindSliderFill(slider) {
+  if (!slider) return;
+  slider.classList.add('ds-slider');
+  slider.addEventListener('input', () => syncSliderFill(slider));
+  syncSliderFill(slider);
+}
+
 function createChannelFlashButton(channelDiv) {
   const flash = document.createElement('button');
   flash.type = 'button';
@@ -931,6 +949,7 @@ function populateChannelList(channels, targetId) {
         applyRGBColor(channelDiv, color, e.target.value);
       });
       brightnessSlider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      bindSliderFill(brightnessSlider);
       sliderContainer.appendChild(brightnessSlider);
 
       const percentSpan = document.createElement('span');
@@ -958,6 +977,7 @@ function populateChannelList(channels, targetId) {
         tempValue.textContent = tempSlider.value + 'K';
       });
       tempSlider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      bindSliderFill(tempSlider);
       sliderContainer.appendChild(tempSlider);
       sliderContainer.appendChild(tempValue);
       channelDiv.appendChild(sliderContainer);
@@ -978,6 +998,7 @@ function populateChannelList(channels, targetId) {
         percentSpan.textContent = Math.round((parseInt(slider.value, 10) / 255) * 100) + '%';
       });
       slider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      bindSliderFill(slider);
 
       sliderContainer.appendChild(slider);
       sliderContainer.appendChild(percentSpan);
@@ -1010,6 +1031,7 @@ function nudgeSlider(slider, deltaSteps) {
   newPercent = Math.max(0, Math.min(100, newPercent));
   slider.value = Math.round(lo + (newPercent / 100) * (hi - lo));
   slider.dispatchEvent(new Event('input'));
+  syncSliderFill(slider);
 }
 
 function updateChannelControls(states) {
@@ -1075,6 +1097,7 @@ function updateOneChannelControl(channelDiv, state) {
         const percent = Math.round((state.current / 255) * 100);
         if (slider) {
           slider.value = state.current;
+          syncSliderFill(slider);
         }
         const percSpan = channelDiv.querySelector('.channel-percentage');
         if (percSpan) {
@@ -1160,6 +1183,7 @@ function updateOneChannelControl(channelDiv, state) {
                 if (tempSlider) {
                   tempSlider.value = temp;
                   tempSlider.dispatchEvent(new Event('input'));
+                  syncSliderFill(tempSlider);
                 }
                 if (tempValueSpan) {
                   tempValueSpan.textContent = `${temp}K`;
