@@ -1602,7 +1602,7 @@ function applyLogBarVisibility(visible) {
   }
   bindLogBarToggle();
   const box = document.getElementById('showLogBar');
-  if (box) box.checked = show;
+  if (box && box.checked !== show) box.checked = show;
   if (show) {
     const logElement = document.getElementById('log');
     if (logElement && !logElement.childElementCount && !logElement.textContent.trim()) {

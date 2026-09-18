@@ -244,7 +244,7 @@ main {
 
 #logBar,
 .command-log {
-  display: none;
+  display: none !important;
   box-sizing: border-box;
   position: fixed;
   left: var(--sidebar-width);
@@ -259,13 +259,10 @@ main {
   border-top: 1px solid var(--border);
 }
 
-body.log-visible #logBar,
-body:has(#showLogBar:checked) #logBar,
-#logBar:not([hidden]) {
+body:has(#showLogBar:checked) #logBar {
   display: block !important;
 }
 
-body.log-visible main,
 body:has(#showLogBar:checked) main {
   padding-bottom: calc(var(--log-height) + 48px);
 }

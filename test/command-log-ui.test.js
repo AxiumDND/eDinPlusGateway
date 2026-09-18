@@ -17,4 +17,5 @@ test('Show command log checkbox can reveal the log with CSS alone', () => {
   assert.match(html, /id="showLogBar"/);
   assert.match(css, /body:has\(#showLogBar:checked\)\s+#logBar/);
   assert.match(css, /position:\s*fixed/);
+  assert.doesNotMatch(css, /#logBar:not\(\[hidden\]\)/);
 });
