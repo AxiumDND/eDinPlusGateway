@@ -6,9 +6,9 @@
 
 :root {
   --log-height: 200px;
-  --sidebar-width: clamp(108px, 11vw, 148px);
-  --sidebar-icon: clamp(26px, 2.4vw, 34px);
-  --sidebar-label: clamp(11px, 1.05vw, 13px);
+  --sidebar-width: clamp(152px, 16vw, 228px);
+  --sidebar-icon: clamp(32px, 3.2vw, 46px);
+  --sidebar-label: clamp(12px, 1.25vw, 15px);
   --pagebar-height: 56px;
   --bg: #101216;
   --bg-raised: #161a20;
@@ -52,7 +52,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(16px, 2vw, 22px) clamp(8px, 1vw, 12px) 16px;
+  padding: clamp(18px, 2.2vw, 28px) clamp(12px, 1.4vw, 18px) 18px;
   position: fixed;
   top: 0;
   left: 0;
@@ -77,8 +77,8 @@ body {
 }
 
 .brand-mark {
-  width: clamp(32px, 3vw, 42px);
-  height: clamp(32px, 3vw, 42px);
+  width: clamp(40px, 3.6vw, 54px);
+  height: clamp(40px, 3.6vw, 54px);
   border-radius: 12px;
   background: linear-gradient(135deg, var(--yellow) 0%, #c9a00e 55%, var(--blue) 100%);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
@@ -104,7 +104,7 @@ body {
   gap: 7px;
   width: 100%;
   margin: 0;
-  padding: clamp(12px, 1.4vw, 16px) 6px;
+  padding: clamp(14px, 1.6vw, 20px) 8px;
   font-family: inherit;
   font-size: var(--sidebar-label);
   font-weight: 650;
@@ -528,11 +528,13 @@ footer {
 }
 
 .channel-level-meter {
+  width: 100%;
+  min-width: 80px;
   height: 10px;
   border-radius: 999px;
   background: #0f131a;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
 }
 
 .channel-level-fill {
