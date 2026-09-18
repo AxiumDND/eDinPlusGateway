@@ -219,7 +219,7 @@
       </div>
       <div id="controlRoom" class="control-room" hidden>
         <header class="room-header">
-          <button type="button" id="controlBack" class="room-back" aria-label="Back to areas">
+          <button type="button" id="controlBack" class="room-back" aria-label="Back to areas" onclick="showControlHome()">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5 8 12l7.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <div class="room-title-block">
@@ -341,8 +341,11 @@
       document.getElementById(sectionId + "-btn").classList.add("active");
       
       // If the Area section is activated, load the area names.
-      if (sectionId === 'area' && window.electronAPI && !new URLSearchParams(location.search).has('preview')) {
-        loadAreaNames();
+      if (sectionId === 'area') {
+        if (typeof showControlHome === 'function') showControlHome();
+        if (window.electronAPI && !new URLSearchParams(location.search).has('preview')) {
+          loadAreaNames();
+        }
       }
     }
 

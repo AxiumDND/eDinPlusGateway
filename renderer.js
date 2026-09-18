@@ -1141,19 +1141,28 @@ function createSceneButtons(scenes) {
     }
     sceneBtn.addEventListener('click', () => {
       console.log('Scene button clicked:', scene.name, 'with scene number:', scene.num);
+      const isOff = String(scene.name).trim().toLowerCase() === 'off';
       if (areaNum) {
         const state = getAreaState(areaNum);
-        state.on = true;
-        state.sceneName = scene.name;
         state.sceneNum = scene.num;
+        if (isOff) {
+          state.on = false;
+          state.sceneName = '';
+          if (typeof sendCommand === 'function') {
+            sendCommand(`$SCNOFF,${scene.num};`);
+          }
+        } else {
+          state.on = true;
+          state.sceneName = scene.name;
+          if (typeof sendCommand === 'function') {
+            sendCommand(`$SCNRECALL,${scene.num};`);
+          }
+        }
         refreshAreaTile(areaNum);
         refreshRoomHeader(areaNum);
       }
       container.querySelectorAll('.scene-button').forEach(btn => btn.classList.remove('active'));
-      sceneBtn.classList.add('active');
-      if (typeof sendCommand === 'function') {
-        sendCommand(`$SCNRECALL,${scene.num};`);
-      }
+      if (!isOff) sceneBtn.classList.add('active');
     });
 
     const editBtn = document.createElement('button');
@@ -2373,3 +2382,20 @@ let tunableWhiteColors = {
   neutral: '#FFFFFF', // White (middle)
   warm: '#FEB833'     // rgb(254,184,51)
 };
+
+document.addEventListener('DOMContentLoaded', function bindControlChrome() {
+  const controlBack = document.getElementById('controlBack');
+  if (controlBack) {
+    controlBack.addEventListener('click', function (event) {
+      event.preventDefault();
+      showControlHome();
+    });
+  }
+  const controlRoomPower = document.getElementById('controlRoomPower');
+  if (controlRoomPower) {
+    controlRoomPower.addEventListener('click', function (event) {
+      const area = findArea(window.areaUi.selectedNum);
+      if (area) toggleAreaPower(area, event);
+    });
+  }
+});
