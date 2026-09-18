@@ -6,6 +6,8 @@
 
 :root {
   --log-height: 200px;
+  --sidebar-width: 88px;
+  --pagebar-height: 56px;
   --bg: #101216;
   --bg-raised: #161a20;
   --bg-header: #0c0e12;
@@ -35,22 +37,41 @@ body {
   overflow-y: auto;
 }
 
-.app-header {
-  background: var(--bg-header);
-  color: var(--text);
-  padding: 10px 18px;
+.app-shell {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  border-bottom: 1px solid var(--border);
+  min-height: 100vh;
+  align-items: stretch;
 }
 
-.brand {
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-header);
+  border-right: 1px solid var(--border);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  text-align: left;
+  padding: 14px 8px 12px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 200;
+}
+
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.sidebar-brand-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .brand-mark {
@@ -59,6 +80,75 @@ body {
   border-radius: 8px;
   background: linear-gradient(135deg, var(--yellow) 0%, #c9a00e 55%, var(--blue) 100%);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.sidebar-nav,
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.sidebar-nav {
+  flex: 1;
+}
+
+.sidebar button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 4px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.sidebar button svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.sidebar button:hover {
+  background: #2a303c;
+  color: var(--text);
+}
+
+.sidebar button.active {
+  background: var(--yellow);
+  color: #1a1400;
+}
+
+.app-main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.page-bar {
+  background: var(--bg-header);
+  color: var(--text);
+  padding: 12px 22px;
+  display: flex;
+  align-items: center;
+  min-height: var(--pagebar-height);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
 }
 
 .brand-text h1 {
@@ -77,45 +167,14 @@ body {
 }
 
 .app-nav {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.app-nav button,
-nav button {
-  margin: 0;
-  padding: 7px 13px;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  background: #2a303c;
-  color: var(--text);
-  border: 1px solid transparent;
-  cursor: pointer;
-  border-radius: 999px;
-}
-
-.app-nav button:hover,
-nav button:hover {
-  background: #3a4252;
-}
-
-.app-nav button.active,
-nav button.active {
-  background: var(--yellow);
-  color: #1a1400;
-  font-weight: 700;
-  border-radius: 999px;
+  display: none;
 }
 
 main {
   padding: 22px 24px 24px;
   background: var(--bg);
-  height: calc(100vh - 150px);
+  flex: 1;
   overflow-y: auto;
-  margin-bottom: 220px;
   text-align: left;
 }
 
@@ -182,11 +241,11 @@ footer {
   background: var(--bg-header);
   color: var(--muted);
   padding: 8px;
-  position: fixed;
-  bottom: 0;
+  position: relative;
   width: 100%;
   z-index: 100;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 /* Log container styles */
@@ -527,13 +586,47 @@ footer {
 }
 
 @media (max-width: 800px) {
-  .app-header {
-    flex-direction: column;
-    align-items: stretch;
+  :root {
+    --log-height: 120px;
   }
 
-  .app-nav {
-    justify-content: flex-start;
+  .sidebar {
+    flex-direction: row;
+    width: 100%;
+    height: 64px;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    padding: 6px 8px;
+    border-right: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .sidebar-brand {
+    display: none;
+  }
+
+  .sidebar-nav,
+  .sidebar-footer {
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-around;
+    gap: 4px;
+  }
+
+  .sidebar-footer {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .sidebar button {
+    min-width: 56px;
+    padding: 6px 4px;
+  }
+
+  .app-main {
+    margin-left: 0;
+    padding-bottom: 64px;
   }
 
   .area-container {

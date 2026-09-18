@@ -10,21 +10,44 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand">
+  <div class="app-shell">
+  <aside class="sidebar" aria-label="Primary">
+    <div class="sidebar-brand" title="eDin+ Gateway">
       <span class="brand-mark" aria-hidden="true"></span>
-      <div class="brand-text">
-        <h1>eDin+ Gateway</h1>
-        <p class="brand-sub">Control · Commission</p>
-      </div>
+      <span class="sidebar-brand-name">eDin+</span>
     </div>
-    <nav class="app-nav">
-      <button id="setup-btn" onclick="showSection('setup')">Setup</button>
-      <button id="keypad-btn" onclick="showSection('keypad')">Keypad</button>
-      <button id="channel-btn" onclick="showSection('channel')">Channel</button>
-      <button id="dali-btn" onclick="showSection('dali')">DALI</button>
-      <button id="area-btn" onclick="showSection('area')">Control</button>
+    <nav class="sidebar-nav">
+      <button id="area-btn" onclick="showSection('area')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        <span>Control</span>
+      </button>
+      <button id="channel-btn" onclick="showSection('channel')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16h4V8h3v10H4zM13 18h4V6h3v14h-7z" fill="currentColor"/></svg>
+        <span>Adjust</span>
+      </button>
+      <button id="dali-btn" onclick="showSection('dali')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7V18h8v-2.3A7 7 0 0 0 12 3zm-3 17h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z" fill="currentColor"/></svg>
+        <span>DALI</span>
+      </button>
+      <button id="keypad-btn" onclick="showSection('keypad')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="1.6"/><circle cx="12" cy="7" r="1.6"/><circle cx="17" cy="7" r="1.6"/><circle cx="7" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="17" cy="12" r="1.6"/><circle cx="7" cy="17" r="1.6"/><circle cx="12" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/></svg>
+        <span>Keypad</span>
+      </button>
     </nav>
+    <div class="sidebar-footer">
+      <button id="setup-btn" onclick="showSection('setup')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zm8.1 2.6-1.7-.3a6.7 6.7 0 0 0-.6-1.5l1-1.4-1.4-1.4-1.4 1a6.7 6.7 0 0 0-1.5-.6l-.3-1.7h-2l-.3 1.7a6.7 6.7 0 0 0-1.5.6l-1.4-1-1.4 1.4 1 1.4a6.7 6.7 0 0 0-.6 1.5l-1.7.3v2l1.7.3c.1.5.3 1 .6 1.5l-1 1.4 1.4 1.4 1.4-1c.5.3 1 .5 1.5.6l.3 1.7h2l.3-1.7c.5-.1 1-.3 1.5-.6l1.4 1 1.4-1.4-1-1.4c.3-.5.5-1 .6-1.5l1.7-.3v-2z" fill="currentColor"/></svg>
+        <span>Setup</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="app-main">
+  <header class="page-bar">
+    <div class="brand-text">
+      <h1>eDin+ Gateway</h1>
+      <p class="brand-sub">Control · Commission</p>
+    </div>
   </header>
 
   <main>
@@ -209,6 +232,8 @@
       <pre id="log"></pre>
     </div>
   </footer>
+  </div><!-- .app-main -->
+  </div><!-- .app-shell -->
 
   <!-- Modal Overlay for Scene Edit (hidden by default) -->
   <div id="sceneEditModal" class="modal-overlay" style="display:none;">
@@ -305,7 +330,7 @@
     function showSection(sectionId) {
       document.querySelectorAll('.section').forEach(section => section.style.display = 'none');
       document.getElementById(sectionId).style.display = 'block';
-      document.querySelectorAll("nav button").forEach(btn => btn.classList.remove("active"));
+      document.querySelectorAll(".sidebar button").forEach(btn => btn.classList.remove("active"));
       document.getElementById(sectionId + "-btn").classList.add("active");
       
       // If the Area section is activated, load the area names.
