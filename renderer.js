@@ -115,7 +115,9 @@ function parseAreaResponse(responseText) {
 window.areaUi = window.areaUi || {
   selectedNum: null,
   selectedName: null,
-  byArea: {}
+  byArea: {},
+  areas: [],
+  view: 'home'
 };
 
 function getAreaState(areaNum) {
@@ -125,13 +127,54 @@ function getAreaState(areaNum) {
   return window.areaUi.byArea[areaNum];
 }
 
+function findArea(areaNum) {
+  return (window.areaUi.areas || []).find(a => String(a.num) === String(areaNum));
+}
+
+function showControlHome() {
+  window.areaUi.view = 'home';
+  const home = document.getElementById('controlHome');
+  const room = document.getElementById('controlRoom');
+  if (home) home.hidden = false;
+  if (room) room.hidden = true;
+  if (window.areaUi.areas && window.areaUi.areas.length) {
+    createAreaTiles(window.areaUi.areas);
+  }
+}
+
+function showControlRoom(area) {
+  window.areaUi.view = 'room';
+  const home = document.getElementById('controlHome');
+  const room = document.getElementById('controlRoom');
+  if (home) home.hidden = true;
+  if (room) room.hidden = false;
+  const nameEl = document.getElementById('controlRoomName');
+  if (nameEl) nameEl.textContent = area.name;
+  refreshRoomHeader(area.num);
+}
+
+function refreshRoomHeader(areaNum) {
+  const state = getAreaState(areaNum);
+  const sceneEl = document.getElementById('controlRoomScene');
+  if (sceneEl) {
+    sceneEl.textContent = state.on && state.sceneName ? state.sceneName : '';
+  }
+  const power = document.getElementById('controlRoomPower');
+  if (power) {
+    power.classList.toggle('on', state.on);
+    power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+  }
+}
+
 function selectArea(area) {
   window.areaUi.selectedNum = String(area.num);
   window.areaUi.selectedName = area.name;
-  document.querySelectorAll('.area-tile').forEach(tile => {
-    tile.classList.toggle('selected', tile.dataset.areaNum === String(area.num));
-  });
+  showControlRoom(area);
   const areaNumInt = parseInt(area.num, 10);
+  const scenePanel = document.getElementById('scenePanel');
+  if (scenePanel) {
+    scenePanel.innerHTML = '<div class="area-empty">Loading scenes…</div>';
+  }
   if (typeof sendCommand === 'function') {
     sendCommand(`?SCNNAMES,${areaNumInt};`);
   }
@@ -153,11 +196,15 @@ function toggleAreaPower(area, event) {
     state.on = true;
     if (sceneNum && typeof sendCommand === 'function') {
       sendCommand(`$SCNRECALL,${sceneNum};`);
-    } else {
-      selectArea(area);
     }
   }
   refreshAreaTile(area.num);
+  if (window.areaUi.selectedNum === String(area.num)) {
+    refreshRoomHeader(area.num);
+    document.querySelectorAll('.scene-button').forEach(btn => {
+      btn.classList.toggle('active', state.on && btn.dataset.sceneNum === String(state.sceneNum));
+    });
+  }
 }
 
 function refreshAreaTile(areaNum) {
@@ -177,61 +224,145 @@ function refreshAreaTile(areaNum) {
   }
 }
 
+function persistAreaOrder(areas) {
+  try {
+    localStorage.setItem('CONTROL_AREA_ORDER', areas.map(a => String(a.num)).join(','));
+  } catch (err) {
+    console.warn('Could not persist area order', err);
+  }
+}
+
+function applySavedAreaOrder(areas) {
+  let order = [];
+  try {
+    order = (localStorage.getItem('CONTROL_AREA_ORDER') || '').split(',').filter(Boolean);
+  } catch (err) {
+    order = [];
+  }
+  if (!order.length) return areas;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return areas.slice().sort((a, b) => {
+    const ia = rank.has(String(a.num)) ? rank.get(String(a.num)) : 1000;
+    const ib = rank.has(String(b.num)) ? rank.get(String(b.num)) : 1000;
+    return ia - ib;
+  });
+}
+
+function createAreaTileEl(area) {
+  const state = getAreaState(area.num);
+  const tile = document.createElement('div');
+  tile.className = 'area-tile' + (state.on ? ' is-on' : ' is-off');
+  tile.setAttribute('role', 'button');
+  tile.tabIndex = 0;
+  tile.draggable = true;
+  tile.dataset.areaNum = String(area.num);
+
+  const copy = document.createElement('div');
+  copy.className = 'area-tile-copy';
+  const name = document.createElement('div');
+  name.className = 'area-tile-name';
+  name.textContent = area.name;
+  const scene = document.createElement('div');
+  scene.className = 'area-tile-scene';
+  scene.textContent = state.on && state.sceneName ? state.sceneName : '';
+  copy.appendChild(name);
+  copy.appendChild(scene);
+
+  const power = document.createElement('button');
+  power.type = 'button';
+  power.className = 'area-power' + (state.on ? ' on' : '');
+  power.setAttribute('aria-label', 'Toggle ' + area.name);
+  power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+  power.addEventListener('click', (event) => toggleAreaPower(area, event));
+
+  tile.appendChild(copy);
+  tile.appendChild(power);
+  tile.addEventListener('click', () => {
+    console.log('Tile clicked:', area.name, 'with area number:', area.num);
+    selectArea(area);
+  });
+  tile.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectArea(area);
+    }
+  });
+  tile.addEventListener('dragstart', (event) => {
+    event.dataTransfer.setData('text/plain', String(area.num));
+    tile.classList.add('dragging');
+  });
+  tile.addEventListener('dragend', () => tile.classList.remove('dragging'));
+  tile.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    tile.classList.add('drag-over');
+  });
+  tile.addEventListener('dragleave', () => tile.classList.remove('drag-over'));
+  tile.addEventListener('drop', (event) => {
+    event.preventDefault();
+    tile.classList.remove('drag-over');
+    const fromId = event.dataTransfer.getData('text/plain');
+    const toId = String(area.num);
+    if (!fromId || fromId === toId) return;
+    const list = window.areaUi.areas.slice();
+    const fromIdx = list.findIndex(a => String(a.num) === fromId);
+    const toIdx = list.findIndex(a => String(a.num) === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    window.areaUi.areas = list;
+    persistAreaOrder(list);
+    createAreaTiles(list);
+  });
+  return tile;
+}
+
 function createAreaTiles(areas) {
   const container = document.getElementById('tileContainer');
   if (!container) {
     console.error('Tile container not found!');
     return;
   }
+  const ordered = applySavedAreaOrder(areas);
+  window.areaUi.areas = ordered;
   container.innerHTML = '';
-  if (!areas.length) {
+  if (!ordered.length) {
     const empty = document.createElement('div');
     empty.className = 'area-empty';
-    empty.style.gridColumn = '1 / -1';
     empty.textContent = 'No areas yet. Connect the gateway and open Control to load names.';
     container.appendChild(empty);
     return;
   }
-  areas.forEach(area => {
-    const state = getAreaState(area.num);
-    const tile = document.createElement('div');
-    tile.className = 'area-tile tile-button' + (state.on ? ' is-on' : ' is-off');
-    tile.setAttribute('role', 'button');
-    tile.tabIndex = 0;
-    tile.dataset.areaNum = String(area.num);
-    if (window.areaUi.selectedNum === String(area.num)) {
-      tile.classList.add('selected');
+
+  const hasZones = ordered.some(a => a.zone);
+  if (!hasZones) {
+    container.className = 'control-grid';
+    ordered.forEach(area => container.appendChild(createAreaTileEl(area)));
+    return;
+  }
+
+  container.className = 'control-zones';
+  const zones = [];
+  ordered.forEach(area => {
+    const zoneName = area.zone || 'Areas';
+    let zone = zones.find(z => z.name === zoneName);
+    if (!zone) {
+      zone = { name: zoneName, areas: [] };
+      zones.push(zone);
     }
-
-    const name = document.createElement('div');
-    name.className = 'area-tile-name';
-    name.textContent = area.name;
-
-    const scene = document.createElement('div');
-    scene.className = 'area-tile-scene';
-    scene.textContent = state.on && state.sceneName ? state.sceneName : '';
-
-    const power = document.createElement('button');
-    power.type = 'button';
-    power.className = 'area-power' + (state.on ? ' on' : '');
-    power.setAttribute('aria-label', 'Toggle ' + area.name);
-    power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
-    power.addEventListener('click', (event) => toggleAreaPower(area, event));
-
-    tile.appendChild(name);
-    tile.appendChild(scene);
-    tile.appendChild(power);
-    tile.addEventListener('click', () => {
-      console.log('Tile clicked:', area.name, 'with area number:', area.num);
-      selectArea(area);
-    });
-    tile.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        selectArea(area);
-      }
-    });
-    container.appendChild(tile);
+    zone.areas.push(area);
+  });
+  zones.forEach(zone => {
+    const block = document.createElement('section');
+    block.className = 'control-zone';
+    const heading = document.createElement('h3');
+    heading.className = 'control-zone-title';
+    heading.textContent = zone.name;
+    const grid = document.createElement('div');
+    grid.className = 'control-grid';
+    zone.areas.forEach(area => grid.appendChild(createAreaTileEl(area)));
+    block.appendChild(heading);
+    block.appendChild(grid);
+    container.appendChild(block);
   });
 }
 
@@ -979,31 +1110,19 @@ function updateChannelControls(states) {
 // Scene Buttons
 // =============================================================================
 function createSceneButtons(scenes) {
-  const container = document.querySelector('.areawindowright');
+  const container = document.getElementById('scenePanel') || document.querySelector('.scene-grid');
   if (!container) {
     console.error('Scene container not found!');
     return;
   }
   container.innerHTML = '';
 
-  const toolbar = document.createElement('div');
-  toolbar.className = 'scene-toolbar';
-  const title = document.createElement('h3');
-  title.textContent = window.areaUi.selectedName || 'Scenes';
-  const hint = document.createElement('span');
-  hint.textContent = 'Active scene in yellow';
-  toolbar.appendChild(title);
-  toolbar.appendChild(hint);
-  container.appendChild(toolbar);
-
-  const list = document.createElement('div');
-  list.className = 'scene-list';
-
   if (!scenes.length) {
     const empty = document.createElement('div');
     empty.className = 'area-empty';
     empty.textContent = 'No named scenes in this area.';
-    list.appendChild(empty);
+    container.appendChild(empty);
+    return;
   }
 
   const areaNum = window.areaUi.selectedNum;
@@ -1015,6 +1134,7 @@ function createSceneButtons(scenes) {
 
     const sceneBtn = document.createElement('button');
     sceneBtn.classList.add('scene-button');
+    sceneBtn.dataset.sceneNum = String(scene.num);
     sceneBtn.textContent = scene.name;
     if (areaState && areaState.on && String(areaState.sceneNum) === String(scene.num)) {
       sceneBtn.classList.add('active');
@@ -1027,8 +1147,9 @@ function createSceneButtons(scenes) {
         state.sceneName = scene.name;
         state.sceneNum = scene.num;
         refreshAreaTile(areaNum);
+        refreshRoomHeader(areaNum);
       }
-      list.querySelectorAll('.scene-button').forEach(btn => btn.classList.remove('active'));
+      container.querySelectorAll('.scene-button').forEach(btn => btn.classList.remove('active'));
       sceneBtn.classList.add('active');
       if (typeof sendCommand === 'function') {
         sendCommand(`$SCNRECALL,${scene.num};`);
@@ -1037,6 +1158,7 @@ function createSceneButtons(scenes) {
 
     const editBtn = document.createElement('button');
     editBtn.classList.add('scene-edit-button');
+    editBtn.setAttribute('aria-label', 'Edit ' + scene.name);
     editBtn.textContent = '⚙︎';
     editBtn.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -1046,10 +1168,8 @@ function createSceneButtons(scenes) {
 
     sceneContainer.appendChild(sceneBtn);
     sceneContainer.appendChild(editBtn);
-    list.appendChild(sceneContainer);
+    container.appendChild(sceneContainer);
   });
-
-  container.appendChild(list);
 }
 
 // =============================================================================
@@ -1933,6 +2053,18 @@ window.onload = () => {
   if (channelLevel && display) {
     channelLevel.addEventListener('input', function () {
       display.textContent = channelLevel.value;
+    });
+  }
+
+  const controlBack = document.getElementById('controlBack');
+  if (controlBack) {
+    controlBack.addEventListener('click', showControlHome);
+  }
+  const controlRoomPower = document.getElementById('controlRoomPower');
+  if (controlRoomPower) {
+    controlRoomPower.addEventListener('click', (event) => {
+      const area = findArea(window.areaUi.selectedNum);
+      if (area) toggleAreaPower(area, event);
     });
   }
 

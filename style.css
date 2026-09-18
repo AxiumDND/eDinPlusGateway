@@ -348,31 +348,34 @@ footer {
   background-color: #8b8b8b;
 }
 
-.area-container {
-  display: flex;
+.area-section {
+  max-width: 980px;
+}
+
+.control-home,
+.control-room {
   width: 100%;
-  gap: 16px;
-  min-height: 420px;
 }
 
-.areawindowLeft, .areawindowright {
-  flex: 1 1 50%;
-  max-width: 50%;
-  box-sizing: border-box;
-  min-height: 420px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  padding: 14px;
+.control-zones {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
-.areawindowLeft {
+.control-zone-title {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.control-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  grid-auto-rows: min-content;
-  gap: 12px;
-  align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
 .area-empty {
@@ -382,72 +385,146 @@ footer {
   text-align: center;
 }
 
-.tile-button,
 .area-tile {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: stretch;
   margin: 0;
-  padding: 14px;
+  padding: 18px 16px 14px;
   color: var(--text);
-  background: var(--bg-tile);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  background: #1a1e26;
+  border: none;
+  border-radius: 20px;
   cursor: pointer;
-  min-height: 118px;
+  min-height: 148px;
   width: 100%;
   text-align: left;
   font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .area-tile:hover {
-  border-color: #4a5568;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  background: #202632;
 }
 
-.area-tile.selected {
-  border-color: var(--yellow);
-  box-shadow: 0 0 0 1px var(--yellow);
+.area-tile.dragging {
+  opacity: 0.45;
+}
+
+.area-tile.drag-over {
+  box-shadow: inset 0 0 0 2px var(--yellow);
 }
 
 .area-tile.is-on {
-  background: linear-gradient(180deg, var(--yellow-dim), var(--bg-tile) 70%);
+  background: #242018;
 }
 
 .area-tile.is-off {
-  background: linear-gradient(180deg, var(--blue-dim), var(--bg-tile) 70%);
+  background: #171c26;
+}
+
+.area-tile-copy {
+  min-height: 52px;
 }
 
 .area-tile-name {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 650;
-  line-height: 1.25;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .area-tile-scene {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--yellow);
   min-height: 16px;
   font-weight: 500;
 }
 
+.area-tile.is-off .area-tile-scene:empty,
 .area-tile.is-off .area-tile-scene {
   color: transparent;
 }
 
 .area-power {
   align-self: flex-end;
-  width: 36px;
-  height: 22px;
+  width: 44px;
+  height: 26px;
   border-radius: 999px;
   border: none;
   cursor: pointer;
   background: var(--blue);
   position: relative;
   padding: 0;
+  flex-shrink: 0;
+}
+
+.room-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.room-back {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: #222833;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.room-back svg {
+  width: 20px;
+  height: 20px;
+}
+
+.room-title-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-title-block h2 {
+  margin: 4px 0 4px;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.room-scene-caption {
+  margin: 0;
+  min-height: 18px;
+  color: var(--yellow);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.room-header .area-power {
+  margin-top: 8px;
+}
+
+.control-subhead {
+  margin: 0 0 12px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
 }
 
 .area-power::after {
@@ -455,8 +532,8 @@ footer {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
   transition: transform 0.15s ease;
@@ -467,7 +544,7 @@ footer {
 }
 
 .area-power.on::after {
-  transform: translateX(14px);
+  transform: translateX(18px);
 }
 
 .ds-grid {
@@ -556,33 +633,10 @@ footer {
   min-width: 80px;
 }
 
-.scene-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 12px;
-}
-
-.scene-toolbar h3 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.scene-toolbar span {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.scene-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .scene-item {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
 }
 
 @media (max-width: 800px) {
@@ -632,14 +686,12 @@ footer {
     padding-bottom: 64px;
   }
 
-  .area-container {
-    flex-direction: column;
+  .control-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 
-  .areawindowLeft,
-  .areawindowright {
-    max-width: 100%;
-    min-height: 220px;
+  .room-title-block h2 {
+    font-size: 22px;
   }
 }
 
@@ -923,31 +975,31 @@ footer {
 
 .scene-button {
   flex: 1;
-  min-height: 40px;
+  min-height: 56px;
   color: var(--text);
-  background: #2a303c;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: #222833;
+  border: none;
+  border-radius: 16px;
   font-family: inherit;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
   cursor: pointer;
 }
 
 .scene-button.active {
   background: var(--yellow);
   color: #1a1400;
-  border-color: var(--yellow);
 }
 
 .scene-edit-button {
   width: 40px;
-  height: 40px;
-  color: #1a1400;
-  background: var(--yellow);
+  min-height: 56px;
+  color: var(--muted);
+  background: #222833;
   border: none;
-  border-radius: 10px;
+  border-radius: 16px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 /* Global control buttons in scene edit modal */
