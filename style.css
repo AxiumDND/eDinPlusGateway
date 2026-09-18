@@ -523,6 +523,57 @@ footer {
   color: var(--muted);
 }
 
+.control-channels {
+  margin-top: 28px;
+}
+
+.channel-item--view {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(80px, 2fr) 56px;
+  align-items: center;
+  gap: 14px;
+}
+
+.channel-item--view .channel-view-name {
+  min-width: 0;
+  font-weight: 550;
+}
+
+.channel-item--view .color-preview {
+  justify-self: start;
+  margin: 0;
+  cursor: default;
+}
+
+.channel-item--view .color-preview:hover {
+  transform: none;
+  border-color: #555;
+  box-shadow: none;
+}
+
+.channel-item--view .channel-percentage {
+  min-width: 0;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.channel-level-meter {
+  height: 10px;
+  border-radius: 999px;
+  background: #0f131a;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.channel-level-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--yellow);
+  transition: width 0.2s ease;
+}
+
 .scene-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -700,6 +751,20 @@ footer {
 
   .scene-button {
     min-height: 72px;
+  }
+
+  .channel-item--view {
+    grid-template-columns: minmax(0, 1fr) 52px;
+    grid-template-areas:
+      "name value"
+      "meter meter";
+  }
+
+  .channel-item--view .channel-view-name { grid-area: name; }
+  .channel-item--view .channel-percentage { grid-area: value; }
+  .channel-item--view .channel-level-meter,
+  .channel-item--view .color-preview {
+    grid-area: meter;
   }
 
   .app-main {

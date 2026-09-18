@@ -137,6 +137,7 @@ function showControlHome() {
   const room = document.getElementById('controlRoom');
   if (home) home.hidden = false;
   if (room) room.hidden = true;
+  clearControlSceneChannels();
   if (window.areaUi.areas && window.areaUi.areas.length) {
     createAreaTiles(window.areaUi.areas);
   }
@@ -204,6 +205,11 @@ function toggleAreaPower(area, event) {
     document.querySelectorAll('.scene-button').forEach(btn => {
       btn.classList.toggle('active', state.on && btn.dataset.sceneNum === String(state.sceneNum));
     });
+    if (state.on && state.sceneNum) {
+      showControlSceneChannels({ num: state.sceneNum, name: state.sceneName || 'Scene' });
+    } else {
+      clearControlSceneChannels();
+    }
   }
 }
 
@@ -826,13 +832,16 @@ function updateBrightness(e) {
 }
 
 // Modify the populateChannelList function to use the new RGB control UI
-function populateChannelList(channels) {
-  const channelList = document.getElementById('channelList');
+function populateChannelList(channels, targetId) {
+  const channelList = document.getElementById(targetId || 'channelList');
+  if (!channelList) return;
   channelList.innerHTML = '';
+  const isControlView = targetId === 'controlChannelList';
   
   channels.forEach(channel => {
     const channelDiv = document.createElement('div');
     channelDiv.classList.add('channel-item');
+    if (isControlView) channelDiv.classList.add('channel-item--view');
     
     // Populate all necessary dataset attributes
     channelDiv.dataset.channelNum = channel.chanNum;
@@ -841,6 +850,43 @@ function populateChannelList(channels) {
     channelDiv.dataset.type = channel.type; // e.g., "CHANNAME", "DMXRGBCOLRNAME"
     channelDiv.dataset.category = getChannelCategory(channel.type);
     channelDiv.dataset.colortype = getColorType(channel.type);
+
+    if (isControlView) {
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'channel-view-name';
+      nameSpan.textContent = channel.name;
+      channelDiv.appendChild(nameSpan);
+
+      const colorType = getColorType(channel.type);
+      if (colorType === 'RGB' || colorType === 'RGBW') {
+        const colorPreview = document.createElement('div');
+        colorPreview.classList.add('color-preview');
+        channelDiv.appendChild(colorPreview);
+        const valueSpan = document.createElement('span');
+        valueSpan.classList.add('color-value', 'channel-percentage');
+        valueSpan.textContent = '—';
+        channelDiv.appendChild(valueSpan);
+      } else if (colorType === 'TW') {
+        const valueSpan = document.createElement('span');
+        valueSpan.classList.add('temp-value', 'channel-percentage');
+        valueSpan.textContent = '—';
+        channelDiv.appendChild(valueSpan);
+      } else {
+        const meter = document.createElement('div');
+        meter.className = 'channel-level-meter';
+        const fill = document.createElement('div');
+        fill.className = 'channel-level-fill';
+        meter.appendChild(fill);
+        channelDiv.appendChild(meter);
+        const percentSpan = document.createElement('span');
+        percentSpan.classList.add('channel-percentage');
+        percentSpan.textContent = '0%';
+        channelDiv.appendChild(percentSpan);
+      }
+
+      channelList.appendChild(channelDiv);
+      return;
+    }
     
     // Create channel name display
     const nameSpan = document.createElement('span');
@@ -985,9 +1031,12 @@ function updateChannelControls(states) {
         firstStateProcessed = true;
     }
     
-    const channelDiv = currentChannelListElement ? currentChannelListElement.querySelector(selector) : document.querySelector(selector);
-    // Fallback to document.querySelector if currentChannelListElement somehow became null, though unlikely with current structure.
+    const matches = document.querySelectorAll(selector);
+    matches.forEach(channelDiv => updateOneChannelControl(channelDiv, state));
+  });
+}
 
+function updateOneChannelControl(channelDiv, state) {
     console.log(`DEBUG: [updateChannelControls] For state (addr=${state.addr}, dev=${state.devcode}, chan=${state.chanNum}), found channelDiv:`, channelDiv);
     
     if (channelDiv && channelDiv.dataset) { // Log the dataset of the found div for verification
@@ -1000,13 +1049,17 @@ function updateChannelControls(states) {
       
       if (category === "LEVEL") {
         const slider = channelDiv.querySelector('.channel-slider');
+        const percent = Math.round((state.current / 255) * 100);
         if (slider) {
           slider.value = state.current;
-          const percent = Math.round((state.current / 255) * 100);
-          const percSpan = channelDiv.querySelector('.channel-percentage');
-          if (percSpan) {
-            percSpan.textContent = percent + "%";
-          }
+        }
+        const percSpan = channelDiv.querySelector('.channel-percentage');
+        if (percSpan) {
+          percSpan.textContent = percent + "%";
+        }
+        const meterFill = channelDiv.querySelector('.channel-level-fill');
+        if (meterFill) {
+          meterFill.style.width = Math.max(0, Math.min(100, percent)) + "%";
         }
       }
       else if (category === "COLOR") {
@@ -1074,21 +1127,19 @@ function updateChannelControls(states) {
           const tempSlider = channelDiv.querySelector('.temp-slider');
           const tempValueSpan = channelDiv.querySelector('.temp-value');
           
-          if (tempSlider && state.current) {
+          if (state.current) {
             // Extract the temperature value from the format "#1800K"
-            let tempValue = state.current;
-            if (tempValue.includes('K')) {
-              // Extract the numeric part before 'K'
-              const tempMatch = tempValue.match(/(\d+)K/);
-              if (tempMatch && tempMatch[1]) {
-                const temp = parseInt(tempMatch[1], 10);
-                if (!isNaN(temp) && temp >= 1800 && temp <= 6500) {
+            let tempValue = String(state.current);
+            const tempMatch = tempValue.match(/(\d+)K/);
+            if (tempMatch && tempMatch[1]) {
+              const temp = parseInt(tempMatch[1], 10);
+              if (!isNaN(temp) && temp >= 1800 && temp <= 6500) {
+                if (tempSlider) {
                   tempSlider.value = temp;
-                  tempSlider.dispatchEvent(new Event('input')); // Trigger the input event to update display
-                  
-                  if (tempValueSpan) {
-                    tempValueSpan.textContent = `${temp}K`;
-                  }
+                  tempSlider.dispatchEvent(new Event('input'));
+                }
+                if (tempValueSpan) {
+                  tempValueSpan.textContent = `${temp}K`;
                 }
               }
             }
@@ -1103,7 +1154,6 @@ function updateChannelControls(states) {
         }
       }
     }
-  });
 }
 
 // =============================================================================
@@ -1122,6 +1172,7 @@ function createSceneButtons(scenes) {
     empty.className = 'area-empty';
     empty.textContent = 'No named scenes in this area.';
     container.appendChild(empty);
+    clearControlSceneChannels();
     return;
   }
 
@@ -1163,6 +1214,7 @@ function createSceneButtons(scenes) {
       }
       container.querySelectorAll('.scene-button').forEach(btn => btn.classList.remove('active'));
       if (!isOff) sceneBtn.classList.add('active');
+      showControlSceneChannels(scene);
     });
 
     const editBtn = document.createElement('button');
@@ -1179,6 +1231,73 @@ function createSceneButtons(scenes) {
     sceneContainer.appendChild(editBtn);
     container.appendChild(sceneContainer);
   });
+
+  if (areaState && areaState.on && areaState.sceneNum) {
+    const active = scenes.find(s => String(s.num) === String(areaState.sceneNum));
+    if (active) showControlSceneChannels(active);
+    else clearControlSceneChannels();
+  } else {
+    clearControlSceneChannels();
+  }
+}
+
+function getDemoSceneChannels(scene) {
+  const presets = {
+    '11': { levels: [200, 90], tw: '#2200K', rgb: '#FF8A3D' },
+    '12': { levels: [255, 210], tw: '#4000K', rgb: '#FFF4E0' },
+    '21': { levels: [170, 50], tw: '#2000K', rgb: '#FF6A00' },
+    '22': { levels: [230, 190], tw: '#4500K', rgb: '#FFE8B0' }
+  };
+  const preset = presets[String(scene && scene.num)] || { levels: [180, 120], tw: '#3000K', rgb: '#FFAA55' };
+  return {
+    channels: [
+      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '001', name: 'Downlights' },
+      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '002', name: 'Pendants' },
+      { type: 'CHANTWCOLRNAME', addr: '001', devcode: '17', chanNum: '003', name: 'Cove TW' },
+      { type: 'CHANRGBCOLRNAME', addr: '001', devcode: '17', chanNum: '004', name: 'Feature RGB' }
+    ],
+    states: [
+      { addr: '001', devcode: '12', chanNum: '001', current: preset.levels[0] },
+      { addr: '001', devcode: '12', chanNum: '002', current: preset.levels[1] },
+      { addr: '001', devcode: '17', chanNum: '003', current: preset.tw },
+      { addr: '001', devcode: '17', chanNum: '004', current: preset.rgb }
+    ]
+  };
+}
+
+function clearControlSceneChannels() {
+  window.viewingScene = null;
+  const section = document.getElementById('controlChannelSection');
+  const list = document.getElementById('controlChannelList');
+  if (section) section.hidden = true;
+  if (list) list.innerHTML = '';
+}
+
+function showControlSceneChannels(scene) {
+  const isOff = !scene || String(scene.name || '').trim().toLowerCase() === 'off';
+  if (isOff) {
+    clearControlSceneChannels();
+    return;
+  }
+
+  window.viewingScene = scene;
+  const section = document.getElementById('controlChannelSection');
+  if (section) section.hidden = false;
+
+  const list = document.getElementById('controlChannelList');
+  if (list && !list.querySelector('.channel-item')) {
+    list.innerHTML = '<div class="area-empty">Loading channels…</div>';
+  }
+
+  if (typeof sendCommand === 'function') {
+    sendCommand(`?SCNCHANNAMES,${scene.num};`);
+  }
+
+  if (typeof window.createDemoScenes === 'function') {
+    const demo = getDemoSceneChannels(scene);
+    populateChannelList(demo.channels, 'controlChannelList');
+    updateChannelControls(demo.states);
+  }
 }
 
 // =============================================================================
@@ -1205,12 +1324,9 @@ function openSceneEditModal(scene) {
   }, 500);
   
   if (typeof window.createDemoScenes === 'function') {
-    populateChannelList([
-      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '001', name: 'Downlights' },
-      { type: 'CHANNAME', addr: '001', devcode: '12', chanNum: '002', name: 'Pendants' },
-      { type: 'CHANTWCOLRNAME', addr: '001', devcode: '17', chanNum: '003', name: 'Cove TW' },
-      { type: 'CHANRGBCOLRNAME', addr: '001', devcode: '17', chanNum: '004', name: 'Feature RGB' }
-    ]);
+    const demo = getDemoSceneChannels(scene);
+    populateChannelList(demo.channels, 'channelList');
+    updateChannelControls(demo.states);
   }
 }
 
@@ -1539,13 +1655,21 @@ window.electronAPI.onLogMessage((message) => {
       message.includes("!CHANTWCOLRNAME,")) {
     const channels = parseChannelNames(message);
     if(channels.length > 0) {
-      populateChannelList(channels);
-      // NOW that the channel list is populated, request the states for these channels.
-      if (window.currentEditingScene && window.currentEditingScene.num) {
-        console.log("DEBUG: [onLogMessage for SCNCHANNAMES] Channel list populated. Requesting SCNCHANSTATES for scene:", window.currentEditingScene.num);
-        sendCommand(`?SCNCHANSTATES,${window.currentEditingScene.num};`);
+      const modal = document.getElementById('sceneEditModal');
+      const modalOpen = modal && modal.style.display === 'flex';
+      if (modalOpen) {
+        populateChannelList(channels, 'channelList');
+      }
+      if (window.viewingScene && window.areaUi.view === 'room') {
+        populateChannelList(channels, 'controlChannelList');
+      }
+      const sceneNum = (modalOpen && window.currentEditingScene && window.currentEditingScene.num)
+        || (window.viewingScene && window.viewingScene.num);
+      if (sceneNum) {
+        console.log("DEBUG: [onLogMessage for SCNCHANNAMES] Channel list populated. Requesting SCNCHANSTATES for scene:", sceneNum);
+        sendCommand(`?SCNCHANSTATES,${sceneNum};`);
       } else {
-        console.warn("DEBUG: [onLogMessage for SCNCHANNAMES] Cannot request SCNCHANSTATES, currentEditingScene or num is missing.");
+        console.warn("DEBUG: [onLogMessage for SCNCHANNAMES] Cannot request SCNCHANSTATES, no active scene.");
       }
     }
   }
