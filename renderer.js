@@ -1427,7 +1427,7 @@ function sendRawCommand(message) {
 // =============================================================================
 // Event Handlers
 // =============================================================================
-window.electronAPI.onLogMessage((message) => {
+if (window.electronAPI && typeof window.electronAPI.onLogMessage === 'function') window.electronAPI.onLogMessage((message) => {
   console.log("DEBUG: UI Log Message Received:", message);
   
   // Handle button state messages
@@ -1523,7 +1523,7 @@ window.electronAPI.onLogMessage((message) => {
   }
 });
 
-window.electronAPI.onLoadSettings((settings) => {
+if (window.electronAPI && typeof window.electronAPI.onLoadSettings === 'function') window.electronAPI.onLoadSettings((settings) => {
   console.log("DEBUG: Loaded settings:", settings);
   if (document.getElementById('ipAddress') && settings.IP_ADDRESS) {
     document.getElementById('ipAddress').value = settings.IP_ADDRESS;
@@ -1871,7 +1871,9 @@ function rgbToHsl(r, g, b) {
 // =============================================================================
 window.onload = () => {
   console.log("DEBUG: UI Loaded - Fetching Settings...");
-  window.electronAPI.requestSettings();
+  if (window.electronAPI && typeof window.electronAPI.requestSettings === 'function') {
+    window.electronAPI.requestSettings();
+  }
   
   // Initialize color picker buttons
   const initColorPickerButtons = () => {

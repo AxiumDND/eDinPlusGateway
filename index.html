@@ -367,7 +367,15 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+      const logToggle = document.getElementById('showLogBar');
+      if (logToggle) {
+        logToggle.addEventListener('change', () => {
+          if (typeof setLogBarVisible === 'function') setLogBarVisible(logToggle.checked);
+          else if (window.setLogBarVisible) window.setLogBarVisible(logToggle.checked);
+        });
+      }
       if (typeof applyLogBarVisibility === 'function') applyLogBarVisibility();
+      else if (window.applyLogBarVisibility) window.applyLogBarVisibility();
       if (typeof applyAppVersion === 'function') applyAppVersion();
       showSection('setup');
       // Populate Fitting ID dropdown (0 to 63)
