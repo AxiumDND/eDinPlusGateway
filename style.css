@@ -242,23 +242,42 @@ main {
   background: #3a4252;
 }
 
-footer {
+#logBar,
+.command-log {
+  display: none;
+  box-sizing: border-box;
+  position: fixed;
+  left: var(--sidebar-width);
+  right: 0;
+  bottom: 0;
+  z-index: 4000;
+  width: auto;
+  margin: 0;
+  padding: 8px 12px 10px;
   background: var(--bg-header);
   color: var(--muted);
-  padding: 8px;
-  position: relative;
-  width: 100%;
-  z-index: 100;
   border-top: 1px solid var(--border);
-  flex-shrink: 0;
 }
 
-body.log-visible footer#logBar {
+body.log-visible #logBar,
+body:has(#showLogBar:checked) #logBar,
+#logBar:not([hidden]) {
   display: block !important;
 }
 
-footer[hidden] {
-  display: none !important;
+body.log-visible main,
+body:has(#showLogBar:checked) main {
+  padding-bottom: calc(var(--log-height) + 48px);
+}
+
+.command-log-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--yellow);
+  text-align: left;
+  margin: 0 0 6px;
 }
 
 .log-toggle {
@@ -817,6 +836,12 @@ footer[hidden] {
   .app-main {
     margin-left: 0;
     padding-bottom: 76px;
+  }
+
+  #logBar,
+  .command-log {
+    left: 0;
+    bottom: 76px;
   }
 
   .control-grid {

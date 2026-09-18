@@ -1596,10 +1596,19 @@ function applyLogBarVisibility(visible) {
   const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
   document.body.classList.toggle('log-visible', show);
   const footer = document.getElementById('logBar');
-  if (footer) footer.hidden = !show;
+  if (footer) {
+    footer.hidden = !show;
+    footer.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
   bindLogBarToggle();
   const box = document.getElementById('showLogBar');
   if (box) box.checked = show;
+  if (show) {
+    const logElement = document.getElementById('log');
+    if (logElement && !logElement.childElementCount && !logElement.textContent.trim()) {
+      logMessage('Command log ready — gateway traffic will appear here.');
+    }
+  }
 }
 
 window.applyLogBarVisibility = applyLogBarVisibility;
