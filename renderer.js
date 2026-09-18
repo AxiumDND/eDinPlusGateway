@@ -1554,6 +1554,8 @@ function setLogBarVisible(visible) {
   applyLogBarVisibility(visible);
 }
 
+window.setLogBarVisible = setLogBarVisible;
+
 function formatAppVersion(version) {
   const value = String(version || '').replace(/^v/i, '').trim();
   return value ? 'v' + value : '';
@@ -1573,7 +1575,7 @@ async function loadAppVersion() {
       if (pkg && pkg.version) return pkg.version;
     }
   } catch (err) { /* fall through */ }
-  return '1.4.1';
+  return '1.4.2';
 }
 
 async function applyAppVersion() {
@@ -1583,14 +1585,25 @@ async function applyAppVersion() {
   });
 }
 
+function bindLogBarToggle() {
+  const box = document.getElementById('showLogBar');
+  if (!box || box.dataset.bound === '1') return;
+  box.dataset.bound = '1';
+  box.addEventListener('change', () => setLogBarVisible(box.checked));
+}
+
 function applyLogBarVisibility(visible) {
   const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
   document.body.classList.toggle('log-visible', show);
   const footer = document.getElementById('logBar');
   if (footer) footer.hidden = !show;
+  bindLogBarToggle();
   const box = document.getElementById('showLogBar');
   if (box) box.checked = show;
 }
+
+window.applyLogBarVisibility = applyLogBarVisibility;
+window.bindLogBarToggle = bindLogBarToggle;
 
 function logMessage(message, type = "log-message") {
   const logElement = document.getElementById('log');
