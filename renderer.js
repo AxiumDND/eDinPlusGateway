@@ -94,6 +94,71 @@ function parseAreaResponse(responseText) {
   return areas;
 }
 
+window.areaUi = window.areaUi || {
+  selectedNum: null,
+  selectedName: null,
+  byArea: {}
+};
+
+function getAreaState(areaNum) {
+  if (!window.areaUi.byArea[areaNum]) {
+    window.areaUi.byArea[areaNum] = { on: false, sceneName: '', sceneNum: null };
+  }
+  return window.areaUi.byArea[areaNum];
+}
+
+function selectArea(area) {
+  window.areaUi.selectedNum = String(area.num);
+  window.areaUi.selectedName = area.name;
+  document.querySelectorAll('.area-tile').forEach(tile => {
+    tile.classList.toggle('selected', tile.dataset.areaNum === String(area.num));
+  });
+  const areaNumInt = parseInt(area.num, 10);
+  if (typeof sendCommand === 'function') {
+    sendCommand(`?SCNNAMES,${areaNumInt};`);
+  }
+  if (typeof window.createDemoScenes === 'function') {
+    window.createDemoScenes();
+  }
+}
+
+function toggleAreaPower(area, event) {
+  if (event) event.stopPropagation();
+  const state = getAreaState(area.num);
+  const sceneNum = state.sceneNum;
+  if (state.on) {
+    state.on = false;
+    if (sceneNum && typeof sendCommand === 'function') {
+      sendCommand(`$SCNOFF,${sceneNum};`);
+    }
+  } else {
+    state.on = true;
+    if (sceneNum && typeof sendCommand === 'function') {
+      sendCommand(`$SCNRECALL,${sceneNum};`);
+    } else {
+      selectArea(area);
+    }
+  }
+  refreshAreaTile(area.num);
+}
+
+function refreshAreaTile(areaNum) {
+  const tile = document.querySelector(`.area-tile[data-area-num="${areaNum}"]`);
+  if (!tile) return;
+  const state = getAreaState(areaNum);
+  tile.classList.toggle('is-on', state.on);
+  tile.classList.toggle('is-off', !state.on);
+  const sceneEl = tile.querySelector('.area-tile-scene');
+  if (sceneEl) {
+    sceneEl.textContent = state.on && state.sceneName ? state.sceneName : '';
+  }
+  const power = tile.querySelector('.area-power');
+  if (power) {
+    power.classList.toggle('on', state.on);
+    power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+  }
+}
+
 function createAreaTiles(areas) {
   const container = document.getElementById('tileContainer');
   if (!container) {
@@ -101,16 +166,54 @@ function createAreaTiles(areas) {
     return;
   }
   container.innerHTML = '';
+  if (!areas.length) {
+    const empty = document.createElement('div');
+    empty.className = 'area-empty';
+    empty.style.gridColumn = '1 / -1';
+    empty.textContent = 'No areas yet. Connect the gateway and open Control to load names.';
+    container.appendChild(empty);
+    return;
+  }
   areas.forEach(area => {
-    const btn = document.createElement('button');
-    btn.classList.add('tile-button');
-    btn.textContent = area.name;
-    btn.addEventListener('click', () => {
+    const state = getAreaState(area.num);
+    const tile = document.createElement('div');
+    tile.className = 'area-tile tile-button' + (state.on ? ' is-on' : ' is-off');
+    tile.setAttribute('role', 'button');
+    tile.tabIndex = 0;
+    tile.dataset.areaNum = String(area.num);
+    if (window.areaUi.selectedNum === String(area.num)) {
+      tile.classList.add('selected');
+    }
+
+    const name = document.createElement('div');
+    name.className = 'area-tile-name';
+    name.textContent = area.name;
+
+    const scene = document.createElement('div');
+    scene.className = 'area-tile-scene';
+    scene.textContent = state.on && state.sceneName ? state.sceneName : '';
+
+    const power = document.createElement('button');
+    power.type = 'button';
+    power.className = 'area-power' + (state.on ? ' on' : '');
+    power.setAttribute('aria-label', 'Toggle ' + area.name);
+    power.setAttribute('aria-pressed', state.on ? 'true' : 'false');
+    power.addEventListener('click', (event) => toggleAreaPower(area, event));
+
+    tile.appendChild(name);
+    tile.appendChild(scene);
+    tile.appendChild(power);
+    tile.addEventListener('click', () => {
       console.log('Tile clicked:', area.name, 'with area number:', area.num);
-      const areaNumInt = parseInt(area.num, 10);
-      sendCommand(`?SCNNAMES,${areaNumInt};`);
+      selectArea(area);
     });
-    container.appendChild(btn);
+    tile.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectArea(area);
+      }
+    });
+    container.appendChild(tile);
   });
 }
 
@@ -864,18 +967,56 @@ function createSceneButtons(scenes) {
     return;
   }
   container.innerHTML = '';
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'scene-toolbar';
+  const title = document.createElement('h3');
+  title.textContent = window.areaUi.selectedName || 'Scenes';
+  const hint = document.createElement('span');
+  hint.textContent = 'Active scene in yellow';
+  toolbar.appendChild(title);
+  toolbar.appendChild(hint);
+  container.appendChild(toolbar);
+
+  const list = document.createElement('div');
+  list.className = 'scene-list';
+
+  if (!scenes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'area-empty';
+    empty.textContent = 'No named scenes in this area.';
+    list.appendChild(empty);
+  }
+
+  const areaNum = window.areaUi.selectedNum;
+  const areaState = areaNum ? getAreaState(areaNum) : null;
+
   scenes.forEach(scene => {
     const sceneContainer = document.createElement('div');
     sceneContainer.classList.add('scene-item');
-    
+
     const sceneBtn = document.createElement('button');
     sceneBtn.classList.add('scene-button');
     sceneBtn.textContent = scene.name;
+    if (areaState && areaState.on && String(areaState.sceneNum) === String(scene.num)) {
+      sceneBtn.classList.add('active');
+    }
     sceneBtn.addEventListener('click', () => {
       console.log('Scene button clicked:', scene.name, 'with scene number:', scene.num);
-      sendCommand(`$SCNRECALL,${scene.num};`);
+      if (areaNum) {
+        const state = getAreaState(areaNum);
+        state.on = true;
+        state.sceneName = scene.name;
+        state.sceneNum = scene.num;
+        refreshAreaTile(areaNum);
+      }
+      list.querySelectorAll('.scene-button').forEach(btn => btn.classList.remove('active'));
+      sceneBtn.classList.add('active');
+      if (typeof sendCommand === 'function') {
+        sendCommand(`$SCNRECALL,${scene.num};`);
+      }
     });
-    
+
     const editBtn = document.createElement('button');
     editBtn.classList.add('scene-edit-button');
     editBtn.textContent = '⚙︎';
@@ -884,11 +1025,13 @@ function createSceneButtons(scenes) {
       console.log('Edit button clicked for scene:', scene);
       openSceneEditModal(scene);
     });
-    
+
     sceneContainer.appendChild(sceneBtn);
     sceneContainer.appendChild(editBtn);
-    container.appendChild(sceneContainer);
+    list.appendChild(sceneContainer);
   });
+
+  container.appendChild(list);
 }
 
 // =============================================================================

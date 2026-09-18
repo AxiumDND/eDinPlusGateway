@@ -4,17 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>eDin+ Gateway Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>eDin+ Gateway Control</h1>
-    <nav>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <h1>eDin+ Gateway</h1>
+        <p class="brand-sub">Control · Commission</p>
+      </div>
+    </div>
+    <nav class="app-nav">
       <button id="setup-btn" onclick="showSection('setup')">Setup</button>
       <button id="keypad-btn" onclick="showSection('keypad')">Keypad</button>
       <button id="channel-btn" onclick="showSection('channel')">Channel</button>
-      <button id="dali-btn" onclick="showSection('dali')">Dali</button>
-      <button id="area-btn" onclick="showSection('area')">Area</button>
+      <button id="dali-btn" onclick="showSection('dali')">DALI</button>
+      <button id="area-btn" onclick="showSection('area')">Control</button>
     </nav>
   </header>
 
@@ -139,34 +148,58 @@
 
     <!-- Dali Section -->
     <div id="dali" class="section" style="display:none;">
-      <label for="dali-ubc">UBC Address:</label>
-      <input type="text" id="dali-ubc" value="001" maxlength="3" size="3">
-      <br><br>
-      <button id="dali-broadcast-btn" onclick="toggleDaliBroadcast()">Start EM Identify Broadcast</button>
-      <br><br>
-      <button id="dali-bst-btn" onclick="toggleDaliBST()">Start Dali BST</button>
-      <br><br>
-      <button onclick="sendDaliOn()">Dali On</button>
-      <button onclick="sendDaliOff()">Dali Off</button>
-      <hr>
-      <h3>Fitting Commands</h3>
-      <label for="dali-fitting-id">Fitting ID:</label>
-      <select id="dali-fitting-id"></select>
-      <button onclick="decrementFittingId()">-</button>
-      <button onclick="incrementFittingId()">+</button>
-      <br><br>
-      <button id="dali-fitting-emidentify-btn" onclick="toggleDaliFittingEMIdentify()">EM Identify</button>
-      <button onclick="sendDaliFittingFunctionTest()">Function Test</button>
-      <button id="dali-fitting-flash-btn" onclick="toggleDaliFittingFlash()">Flash Dali Fitting</button>
+      <div class="section-heading">
+        <h2>DALI Loop</h2>
+        <p class="section-lede">Broadcast, BST, and per-fitting identify — same commissioning rhythm as Design Studio.</p>
+      </div>
+      <div class="ds-grid">
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>Universe / UBC</h3>
+            <span class="ds-chip">Loop</span>
+          </header>
+          <label for="dali-ubc">UBC Address</label>
+          <input type="text" id="dali-ubc" value="001" maxlength="3" size="3">
+          <div class="ds-actions">
+            <button id="dali-broadcast-btn" class="ds-btn" onclick="toggleDaliBroadcast()">Start EM Identify Broadcast</button>
+            <button id="dali-bst-btn" class="ds-btn" onclick="toggleDaliBST()">Start DALI BST</button>
+            <button class="ds-btn ds-btn-on" onclick="sendDaliOn()">DALI On</button>
+            <button class="ds-btn ds-btn-off" onclick="sendDaliOff()">DALI Off</button>
+          </div>
+        </section>
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>Fitting</h3>
+            <span class="ds-chip">0–63</span>
+          </header>
+          <div class="fitting-row">
+            <label for="dali-fitting-id">Fitting ID</label>
+            <div class="fitting-id-controls">
+              <button type="button" class="ds-nudge" onclick="decrementFittingId()" aria-label="Previous fitting">−</button>
+              <select id="dali-fitting-id"></select>
+              <button type="button" class="ds-nudge" onclick="incrementFittingId()" aria-label="Next fitting">+</button>
+            </div>
+          </div>
+          <div class="ds-actions">
+            <button id="dali-fitting-emidentify-btn" class="ds-btn" onclick="toggleDaliFittingEMIdentify()">EM Identify</button>
+            <button class="ds-btn" onclick="sendDaliFittingFunctionTest()">Function Test</button>
+            <button id="dali-fitting-flash-btn" class="ds-btn ds-btn-accent" onclick="toggleDaliFittingFlash()">Flash Fitting</button>
+          </div>
+        </section>
+      </div>
     </div>
 
     <!-- Area Section -->
-    <div id="area" class="section" style="display:none;">
+    <div id="area" class="section area-section" style="display:none;">
+      <div class="section-heading">
+        <h2>Control</h2>
+        <p class="section-lede">Area tiles with yellow/blue power and the active scene under the name.</p>
+      </div>
       <div class="area-container">
-        <!-- Left side: dynamically generated area tiles -->
         <div class="areawindowLeft" id="tileContainer"></div>
-        <!-- Right side: scene buttons for the selected area -->
-        <div class="areawindowright"></div>
+        <div class="areawindowright" id="scenePanel">
+          <div class="area-empty">Select an area to recall scenes.</div>
+        </div>
       </div>
     </div>
   </main>
@@ -276,7 +309,7 @@
       document.getElementById(sectionId + "-btn").classList.add("active");
       
       // If the Area section is activated, load the area names.
-      if (sectionId === 'area') {
+      if (sectionId === 'area' && window.electronAPI && !new URLSearchParams(location.search).has('preview')) {
         loadAreaNames();
       }
     }
@@ -290,6 +323,27 @@
         option.value = i;
         option.text = i;
         fittingSelect.appendChild(option);
+      }
+
+      // Browser / no-gateway preview so Control tiles can be reviewed without a live NPU.
+      if (!window.electronAPI || new URLSearchParams(location.search).has('preview')) {
+        const demoAreas = [
+          { num: '1', name: 'Kitchen' },
+          { num: '2', name: 'Living Room' },
+          { num: '3', name: 'Hall' },
+          { num: '4', name: 'Study' }
+        ];
+        getAreaState('1').on = true;
+        getAreaState('1').sceneName = 'Evening';
+        getAreaState('1').sceneNum = '11';
+        createAreaTiles(demoAreas);
+        window.createDemoScenes = function () {
+          createSceneButtons([
+            { num: '11', name: 'Evening' },
+            { num: '12', name: 'Day' },
+            { num: '13', name: 'Off' }
+          ]);
+        };
       }
     });
   </script>
