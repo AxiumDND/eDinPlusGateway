@@ -831,161 +831,180 @@ function updateBrightness(e) {
   }
 }
 
-// Modify the populateChannelList function to use the new RGB control UI
+function createChannelFlashButton(channelDiv) {
+  const flash = document.createElement('button');
+  flash.type = 'button';
+  flash.className = 'channel-flash-btn';
+  flash.textContent = 'Flash';
+  flash.addEventListener('click', () => {
+    flash.classList.add('is-on');
+    sendOneChannelLevel(channelDiv);
+    setTimeout(() => flash.classList.remove('is-on'), 350);
+  });
+  return flash;
+}
+
+function createChannelNudgeGroup(getSlider) {
+  const group = document.createElement('div');
+  group.className = 'channel-nudge-group';
+
+  const nudgeDown = document.createElement('button');
+  nudgeDown.type = 'button';
+  nudgeDown.classList.add('nudge-button');
+  nudgeDown.textContent = '−';
+  nudgeDown.title = 'Decrease level';
+  nudgeDown.addEventListener('click', () => {
+    const slider = getSlider();
+    nudgeSlider(slider, -1);
+    const row = slider && slider.closest('.channel-item');
+    if (row) sendOneChannelLevel(row);
+  });
+
+  const nudgeToggle = document.createElement('button');
+  nudgeToggle.type = 'button';
+  nudgeToggle.classList.add('nudge-toggle');
+  nudgeToggle.textContent = nudgeIncrement + '%';
+  nudgeToggle.title = `Click to switch to ${nudgeIncrement === 5 ? '1' : '5'}% increments`;
+  nudgeToggle.addEventListener('click', toggleNudgeIncrement);
+
+  const nudgeUp = document.createElement('button');
+  nudgeUp.type = 'button';
+  nudgeUp.classList.add('nudge-button');
+  nudgeUp.textContent = '+';
+  nudgeUp.title = 'Increase level';
+  nudgeUp.addEventListener('click', () => {
+    const slider = getSlider();
+    nudgeSlider(slider, 1);
+    const row = slider && slider.closest('.channel-item');
+    if (row) sendOneChannelLevel(row);
+  });
+
+  group.appendChild(nudgeDown);
+  group.appendChild(nudgeToggle);
+  group.appendChild(nudgeUp);
+  return group;
+}
+
 function populateChannelList(channels, targetId) {
   const channelList = document.getElementById(targetId || 'channelList');
   if (!channelList) return;
   channelList.innerHTML = '';
-  const isControlView = targetId === 'controlChannelList';
   
   channels.forEach(channel => {
     const channelDiv = document.createElement('div');
     channelDiv.classList.add('channel-item');
-    if (isControlView) channelDiv.classList.add('channel-item--view');
     
-    // Populate all necessary dataset attributes
     channelDiv.dataset.channelNum = channel.chanNum;
     channelDiv.dataset.addr = channel.addr;
     channelDiv.dataset.devcode = channel.devcode;
-    channelDiv.dataset.type = channel.type; // e.g., "CHANNAME", "DMXRGBCOLRNAME"
+    channelDiv.dataset.type = channel.type;
     channelDiv.dataset.category = getChannelCategory(channel.type);
     channelDiv.dataset.colortype = getColorType(channel.type);
 
-    if (isControlView) {
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'channel-view-name';
-      nameSpan.textContent = channel.name;
-      channelDiv.appendChild(nameSpan);
-
-      const colorType = getColorType(channel.type);
-      if (colorType === 'RGB' || colorType === 'RGBW') {
-        const colorPreview = document.createElement('div');
-        colorPreview.classList.add('color-preview');
-        channelDiv.appendChild(colorPreview);
-        const valueSpan = document.createElement('span');
-        valueSpan.classList.add('color-value', 'channel-percentage');
-        valueSpan.textContent = '—';
-        channelDiv.appendChild(valueSpan);
-      } else if (colorType === 'TW') {
-        const valueSpan = document.createElement('span');
-        valueSpan.classList.add('temp-value', 'channel-percentage');
-        valueSpan.textContent = '—';
-        channelDiv.appendChild(valueSpan);
-      } else {
-        const meter = document.createElement('div');
-        meter.className = 'channel-level-meter';
-        const fill = document.createElement('div');
-        fill.className = 'channel-level-fill';
-        meter.appendChild(fill);
-        channelDiv.appendChild(meter);
-        const percentSpan = document.createElement('span');
-        percentSpan.classList.add('channel-percentage');
-        percentSpan.textContent = '0%';
-        channelDiv.appendChild(percentSpan);
-      }
-
-      channelList.appendChild(channelDiv);
-      return;
-    }
-    
-    // Create channel name display
     const nameSpan = document.createElement('span');
+    nameSpan.className = 'channel-view-name';
     nameSpan.textContent = channel.name;
-    nameSpan.style.flex = '1';
     channelDiv.appendChild(nameSpan);
-    
-    // For RGB channels, add color preview and brightness slider
-    if (channel.type.includes('RGB') || channel.type.includes('COLR')) {
+
+    const colorType = getColorType(channel.type);
+    const sliderContainer = document.createElement('div');
+    sliderContainer.classList.add('slider-container');
+
+    if (colorType === 'RGB' || colorType === 'RGBW') {
       const colorPreview = document.createElement('div');
       colorPreview.classList.add('color-preview');
-      colorPreview.style.width = '30px';
-      colorPreview.style.height = '30px';
-      colorPreview.style.marginRight = '10px';
-      colorPreview.style.cursor = 'pointer';
       colorPreview.onclick = () => showColorPicker(channelDiv);
-      channelDiv.appendChild(colorPreview);
-      
-      const brightnessContainer = document.createElement('div');
-      brightnessContainer.style.flex = '1';
-      brightnessContainer.style.margin = '0 10px';
-      
+      sliderContainer.appendChild(colorPreview);
+
       const brightnessSlider = document.createElement('input');
       brightnessSlider.type = 'range';
       brightnessSlider.min = '0';
       brightnessSlider.max = '100';
       brightnessSlider.value = '100';
       brightnessSlider.classList.add('rgb-brightness-slider');
-      brightnessSlider.oninput = (e) => {
-        const brightness = e.target.value;
+      brightnessSlider.addEventListener('input', (e) => {
         const color = colorPreview.style.backgroundColor || '#FF0000';
-        applyRGBColor(channelDiv, color, brightness);
-      };
-      brightnessContainer.appendChild(brightnessSlider);
-      channelDiv.appendChild(brightnessContainer);
+        applyRGBColor(channelDiv, color, e.target.value);
+      });
+      brightnessSlider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      sliderContainer.appendChild(brightnessSlider);
+
+      const percentSpan = document.createElement('span');
+      percentSpan.classList.add('color-value', 'channel-percentage');
+      percentSpan.textContent = '100%';
+      brightnessSlider.addEventListener('input', () => {
+        percentSpan.textContent = brightnessSlider.value + '%';
+      });
+      sliderContainer.appendChild(percentSpan);
+      channelDiv.appendChild(sliderContainer);
+      channelDiv.appendChild(createChannelFlashButton(channelDiv));
+      channelDiv.appendChild(createChannelNudgeGroup(() => channelDiv.querySelector('.rgb-brightness-slider')));
+    } else if (colorType === 'TW') {
+      const tempSlider = document.createElement('input');
+      tempSlider.type = 'range';
+      tempSlider.min = '1800';
+      tempSlider.max = '6500';
+      tempSlider.step = '100';
+      tempSlider.value = '3000';
+      tempSlider.classList.add('temp-slider', 'channel-slider');
+      const tempValue = document.createElement('span');
+      tempValue.classList.add('temp-value', 'channel-percentage');
+      tempValue.textContent = '3000K';
+      tempSlider.addEventListener('input', () => {
+        tempValue.textContent = tempSlider.value + 'K';
+      });
+      tempSlider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+      sliderContainer.appendChild(tempSlider);
+      sliderContainer.appendChild(tempValue);
+      channelDiv.appendChild(sliderContainer);
+      channelDiv.appendChild(createChannelFlashButton(channelDiv));
+      channelDiv.appendChild(createChannelNudgeGroup(() => channelDiv.querySelector('.temp-slider')));
     } else {
-      // For regular channels, add level slider and nudge buttons
-      const sliderContainer = document.createElement('div');
-      sliderContainer.classList.add('slider-container');
-      
-      const nudgeDown = document.createElement('button');
-      nudgeDown.classList.add('nudge-button');
-      nudgeDown.textContent = '-';
-      nudgeDown.title = 'Decrease level';
-      nudgeDown.addEventListener('click', () => {
-        const slider = channelDiv.querySelector('.channel-slider');
-        nudgeSlider(slider, -1);
-      });
-      
-      const nudgeToggle = document.createElement('button');
-      nudgeToggle.classList.add('nudge-toggle');
-      nudgeToggle.textContent = nudgeIncrement + '%';
-      nudgeToggle.title = `Click to switch to ${nudgeIncrement === 5 ? '1' : '5'}% increments`;
-      nudgeToggle.addEventListener('click', toggleNudgeIncrement);
-      
-      const nudgeUp = document.createElement('button');
-      nudgeUp.classList.add('nudge-button');
-      nudgeUp.textContent = '+';
-      nudgeUp.title = 'Increase level';
-      nudgeUp.addEventListener('click', () => {
-        const slider = channelDiv.querySelector('.channel-slider');
-        nudgeSlider(slider, 1);
-      });
-      
       const slider = document.createElement('input');
       slider.type = 'range';
       slider.min = '0';
       slider.max = '255';
       slider.value = '0';
       slider.classList.add('channel-slider');
-      
+
       const percentSpan = document.createElement('span');
       percentSpan.classList.add('channel-percentage');
       percentSpan.textContent = '0%';
-      
       slider.addEventListener('input', () => {
-        const percent = Math.round((parseInt(slider.value, 10) / 255) * 100);
-        percentSpan.textContent = percent + '%';
+        percentSpan.textContent = Math.round((parseInt(slider.value, 10) / 255) * 100) + '%';
       });
-      
-      sliderContainer.appendChild(nudgeDown);
-      sliderContainer.appendChild(nudgeToggle);
-      sliderContainer.appendChild(nudgeUp);
+      slider.addEventListener('change', () => sendOneChannelLevel(channelDiv));
+
       sliderContainer.appendChild(slider);
       sliderContainer.appendChild(percentSpan);
       channelDiv.appendChild(sliderContainer);
+      channelDiv.appendChild(createChannelFlashButton(channelDiv));
+      channelDiv.appendChild(createChannelNudgeGroup(() => channelDiv.querySelector('.channel-slider')));
     }
     
     channelList.appendChild(channelDiv);
   });
 }
 
-function nudgeSlider(slider, deltaPercent) {
-  let currentPercent = Math.round((parseInt(slider.value, 10) / 255) * 100);
-  let newPercent = currentPercent + (deltaPercent * nudgeIncrement);
-  if (newPercent < 0) newPercent = 0;
-  if (newPercent > 100) newPercent = 100;
-  let newValue = Math.round((newPercent / 100) * 255);
-  slider.value = newValue;
+function nudgeSlider(slider, deltaSteps) {
+  if (!slider) return;
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const current = parseFloat(slider.value) || 0;
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : 255;
+  if (slider.classList.contains('temp-slider')) {
+    const span = hi - lo;
+    let next = current + (deltaSteps * nudgeIncrement / 100) * span;
+    next = Math.round(next / 100) * 100;
+    slider.value = Math.max(lo, Math.min(hi, next));
+    slider.dispatchEvent(new Event('input'));
+    return;
+  }
+  const currentPercent = Math.round(((current - lo) / (hi - lo)) * 100);
+  let newPercent = currentPercent + (deltaSteps * nudgeIncrement);
+  newPercent = Math.max(0, Math.min(100, newPercent));
+  slider.value = Math.round(lo + (newPercent / 100) * (hi - lo));
   slider.dispatchEvent(new Event('input'));
 }
 
@@ -1361,10 +1380,19 @@ function saveSceneAndClose() {
  * Sends channel commands for each channel in the modal.
  * Fade time is hard-coded to 1000ms for now (you can make it user-configurable).
  */
-function sendSceneChannelLevels() {
-  const channelDivs = document.querySelectorAll('#channelList .channel-item');
-  const fadeTime = 1000; // Hard-coded example fade time
-  channelDivs.forEach(div => {
+function flashControlSceneChannels() {
+  sendSceneChannelLevels('#controlChannelList');
+}
+
+function sendSceneChannelLevels(listSelector) {
+  const channelDivs = document.querySelectorAll((listSelector || '#channelList') + ' .channel-item');
+  channelDivs.forEach(div => sendOneChannelLevel(div));
+}
+
+function sendOneChannelLevel(div) {
+  if (!div) return;
+  const fadeTime = 1000;
+  {
     const category = div.dataset.category;      // "LEVEL" or "COLOR"
     const colorType = div.dataset.colortype;    // "RGB", "TW", or "UNKNOWN"
     const type = div.dataset.type.toUpperCase(); // e.g. "CHANNAME", "DMXNAME", "DALINAME", "DMXRGBCOLRNAME", "CHANRGBCOLRNAME"
@@ -1472,7 +1500,7 @@ function sendSceneChannelLevels() {
       // Add a small delay if sending two commands for the same DMX channel to avoid overwhelming the gateway
       setTimeout(() => sendCommand(brightnessCmd), 50); 
     }
-  });
+  }
 }
 
 // =============================================================================

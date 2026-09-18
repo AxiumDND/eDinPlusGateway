@@ -527,6 +527,59 @@ footer {
   margin-top: 28px;
 }
 
+.control-channels-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.control-channels-head .control-subhead {
+  margin: 0;
+}
+
+.channel-flash-btn {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 12px;
+  background: #2a303c;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.channel-flash-btn:hover {
+  background: #3a4250;
+}
+
+.channel-flash-btn.is-on {
+  background: var(--yellow);
+  color: #1a1400;
+}
+
+.channel-nudge-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.channel-item .channel-view-name {
+  min-width: 110px;
+  flex: 0 1 160px;
+}
+
+.channel-item .slider-container {
+  min-width: 140px;
+}
+
 .channel-level-meter {
   width: 100%;
   min-width: 80px;
@@ -724,18 +777,14 @@ footer {
     min-height: 72px;
   }
 
-  .channel-item.channel-item--view {
-    grid-template-columns: minmax(0, 1fr) 52px;
-    grid-template-areas:
-      "name value"
-      "meter meter";
+  .channel-item {
+    flex-wrap: wrap;
   }
 
-  .channel-item.channel-item--view .channel-view-name { grid-area: name; }
-  .channel-item.channel-item--view .channel-percentage { grid-area: value; }
-  .channel-item.channel-item--view .channel-level-meter,
-  .channel-item.channel-item--view .color-preview {
-    grid-area: meter;
+  .channel-item .slider-container {
+    flex: 1 1 100%;
+    order: 3;
+    margin: 0;
   }
 
   .app-main {
@@ -845,40 +894,6 @@ footer {
 .channel-item span {
   min-width: 120px;
   font-size: 14px;
-}
-
-.channel-item.channel-item--view {
-  display: grid;
-  grid-template-columns: minmax(140px, 220px) minmax(80px, 1fr) 64px;
-  align-items: center;
-  gap: 14px;
-}
-
-.channel-item.channel-item--view .channel-view-name,
-.channel-item.channel-item--view .channel-percentage {
-  min-width: 0;
-}
-
-.channel-item.channel-item--view .channel-view-name {
-  font-weight: 550;
-}
-
-.channel-item.channel-item--view .color-preview {
-  justify-self: start;
-  margin: 0;
-  cursor: default;
-}
-
-.channel-item.channel-item--view .color-preview:hover {
-  transform: none;
-  border-color: #555;
-  box-shadow: none;
-}
-
-.channel-item.channel-item--view .channel-percentage {
-  text-align: right;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .slider-container {
