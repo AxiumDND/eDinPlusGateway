@@ -74,6 +74,41 @@ body {
   height: auto;
 }
 
+.sidebar-version,
+.app-version {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.app-version {
+  margin: 6px 0 0;
+  flex-shrink: 0;
+}
+
+.control-home-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.control-home-bar h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.control-home-sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 
 .sidebar-nav,
 .sidebar-footer {

@@ -1,10 +1,11 @@
 {
   "name": "edin_gateway",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Electron app to send commands to lighting gateway via TCP/IP or HTTP",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test test/*.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
     "build": "electron-builder build --win --publish never"
@@ -50,7 +51,9 @@
       "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
       "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
       "!**/{appveyor.yml,.travis.yml,circle.yml}",
-      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
+      "!test/**",
+      "!.github/**"
     ],
     "asarUnpack": [
       "**/node-fetch/**"
