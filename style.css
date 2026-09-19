@@ -753,6 +753,86 @@ body:has(#showLogBar:checked) main {
   min-width: 80px;
 }
 
+.em-dali-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.em-fitting-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.em-fitting-tile {
+  min-height: 72px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #2a303c;
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 6px;
+  text-align: left;
+}
+
+.em-fitting-tile strong {
+  display: block;
+  font-size: 16px;
+}
+
+.em-fitting-tile span {
+  display: block;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.em-fitting-tile.ok {
+  background: #1f6b4a;
+  border-color: #2f9d6d;
+}
+
+.em-fitting-tile.fail {
+  background: #8b2430;
+  border-color: #c23b4a;
+}
+
+.em-fitting-tile.selected {
+  outline: 2px solid var(--yellow);
+}
+
+.em-status-lists {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.em-status-lists h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.em-status-lists li {
+  list-style: none;
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+
+.em-status-lists ul {
+  margin: 0;
+  padding: 0;
+}
+
+.em-status-ok { color: #7dffa6; }
+.em-status-no { color: #9aa3b2; }
+
+@media (max-width: 800px) {
+  .em-dali-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .scene-item {
   position: relative;
   display: block;

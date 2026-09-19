@@ -62,6 +62,298 @@ function decrementFittingId() {
   stepFittingId(-1);
 }
 
+const em = window.emDali || {};
+window.emUi = window.emUi || {
+  fittings: {},
+  selected: null,
+  broadcastOn: false
+};
+
+function emAddr() {
+  return document.getElementById('em-ubc') ? document.getElementById('em-ubc').value : '001';
+}
+
+function emDev() {
+  return document.getElementById('em-devcode') ? document.getElementById('em-devcode').value : '017';
+}
+
+function emSend(command) {
+  if (typeof sendCommand === 'function') sendCommand(command);
+  else if (typeof logMessage === 'function') logMessage(command);
+}
+
+function emTargetId(shortAddr) {
+  return shortAddr == null ? 'BST' : em.formatShortAddr(shortAddr);
+}
+
+function upsertEmFitting(partial) {
+  const shortAddr = partial.shortAddr;
+  if (shortAddr == null) return;
+  const current = window.emUi.fittings[shortAddr] || { shortAddr };
+  window.emUi.fittings[shortAddr] = Object.assign({}, current, partial);
+}
+
+function applyEmDaliLog(message) {
+  if (!em.parseDaliFixLines) return;
+  em.parseDaliFixLines(message).forEach(upsertEmFitting);
+  em.parseXdaliAppLines(message).forEach(reply => {
+    if (reply.shortAddr == null || reply.status === 1) return;
+    if (reply.opcode === em.OPCODE.QUERY_EMERGENCY_STATUS) {
+      upsertEmFitting({ shortAddr: reply.shortAddr, emergency: reply.data });
+    }
+    if (reply.opcode === em.OPCODE.QUERY_FAILURE_STATUS) {
+      upsertEmFitting({ shortAddr: reply.shortAddr, failure: reply.data });
+    }
+  });
+  if (String(message).toUpperCase().includes('!DALIFIX') || String(message).toUpperCase().includes('!XDALIAPP')) {
+    renderEmDali();
+  }
+}
+
+function seedEmDaliPreview() {
+  if (Object.keys(window.emUi.fittings).length) return;
+  [0, 1, 2, 3, 4, 5, 43, 44].forEach((shortAddr, index) => {
+    upsertEmFitting({
+      shortAddr,
+      longAddr: String(8200000 + shortAddr),
+      groups: index < 4 ? [14] : [15],
+      emergency: index === 5 ? (1 << 1) : ((1 << 1) | (1 << 2) | (1 << 3)),
+      failure: index === 5 ? (1 << 2) : 0
+    });
+  });
+}
+
+function renderEmDali() {
+  const grid = document.getElementById('emFittingGrid');
+  if (!grid) return;
+  if (!window.electronAPI || new URLSearchParams(location.search).has('preview')) {
+    seedEmDaliPreview();
+  }
+  const shorts = Object.keys(window.emUi.fittings).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+  grid.innerHTML = '';
+  shorts.forEach(shortAddr => {
+    const fitting = window.emUi.fittings[shortAddr];
+    const outcome = em.fittingOutcome(fitting.emergency, fitting.failure);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'em-fitting-tile' +
+      (outcome.failed ? ' fail' : outcome.allGood ? ' ok' : '') +
+      (window.emUi.selected === shortAddr ? ' selected' : '');
+    const group = (fitting.groups && fitting.groups[0] != null) ? ('G' + fitting.groups[0]) : '—';
+    btn.innerHTML = '<strong>' + shortAddr + '</strong><span>' + (fitting.longAddr || '') + '</span><span>' + group + '</span>';
+    btn.addEventListener('click', () => {
+      window.emUi.selected = shortAddr;
+      const name = document.getElementById('em-fitting-name');
+      if (name) name.value = fitting.name || '';
+      renderEmDali();
+    });
+    grid.appendChild(btn);
+  });
+  renderEmSelected();
+}
+
+function renderEmSelected() {
+  const title = document.getElementById('emSelectedTitle');
+  const meta = document.getElementById('emSelectedMeta');
+  const chip = document.getElementById('emSelectedGroup');
+  const lists = document.getElementById('emStatusLists');
+  if (!title || !lists) return;
+  const fitting = window.emUi.fittings[window.emUi.selected];
+  if (!fitting) {
+    title.textContent = 'No fitting selected';
+    if (meta) meta.textContent = 'Load fittings or tap a tile.';
+    if (chip) chip.hidden = true;
+    lists.innerHTML = '';
+    return;
+  }
+  title.textContent = 'Short address ' + fitting.shortAddr;
+  if (meta) meta.textContent = 'Long address ' + (fitting.longAddr || '—');
+  if (chip) {
+    chip.hidden = !(fitting.groups && fitting.groups.length);
+    chip.textContent = fitting.groups && fitting.groups.length
+      ? 'G' + fitting.groups.join(', G')
+      : '';
+  }
+  const outcome = em.fittingOutcome(fitting.emergency, fitting.failure);
+  const renderList = (heading, table, flags) => {
+    const items = table.map(item => {
+      const on = !!flags[item.key];
+      return '<li class="' + (on ? 'em-status-ok' : 'em-status-no') + '">' + (on ? '✓ ' : '× ') + item.label + '</li>';
+    }).join('');
+    return '<div><h4>' + heading + '</h4><ul>' + items + '</ul></div>';
+  };
+  lists.innerHTML = (outcome.allGood ? '<p class="info-text">All good — function, duration, and battery valid.</p>' : '') +
+    renderList('Emergency status', em.EMERGENCY_STATUS_BITS, outcome.emergency) +
+    renderList('Failure status', em.FAILURE_STATUS_BITS, outcome.failure);
+}
+
+function loadEmDaliFixtures() {
+  emSend('?DALIFIX,' + em.pad(emAddr(), 3) + ',' + em.pad(emDev(), 3) + ';');
+}
+
+function toggleEmBroadcastIdentify() {
+  window.emUi.broadcastOn = !window.emUi.broadcastOn;
+  const btn = document.getElementById('em-broadcast-btn');
+  if (window.emUi.broadcastOn) {
+    emSend(em.xdaliAppCommand('once', emAddr(), emDev(), 'BST', em.OPCODE.START_IDENTIFICATION));
+    if (btn) btn.textContent = 'Stop EM identify broadcast';
+  } else {
+    emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), 'BST', em.OPCODE.REST));
+    if (btn) btn.textContent = 'EM identify broadcast';
+  }
+}
+
+function startEmSelectedAction() {
+  const mode = document.getElementById('em-identify-mode');
+  if (mode && mode.value === 'function') startEmFunctionTest();
+  else {
+    if (window.emUi.selected == null) return;
+    emSend(em.xdaliAppCommand('once', emAddr(), emDev(), emTargetId(window.emUi.selected), em.OPCODE.START_IDENTIFICATION));
+  }
+}
+
+function startEmFunctionTest(daliId) {
+  const id = daliId || (window.emUi.selected == null ? '' : emTargetId(window.emUi.selected));
+  if (!id) return;
+  emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), id, em.OPCODE.START_FUNCTION_TEST));
+}
+
+function startEmDurationTest(daliId) {
+  const id = daliId || (window.emUi.selected == null ? '' : emTargetId(window.emUi.selected));
+  if (!id) return;
+  emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), id, em.OPCODE.START_DURATION_TEST));
+}
+
+function stopEmDaliTests(daliId) {
+  const id = daliId || (window.emUi.selected == null ? '' : emTargetId(window.emUi.selected));
+  if (!id) return;
+  emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), id, em.OPCODE.STOP_TEST));
+}
+
+function refreshEmTestResults() {
+  const ids = window.emUi.selected != null
+    ? [window.emUi.selected]
+    : Object.keys(window.emUi.fittings).map(n => parseInt(n, 10));
+  ids.forEach(shortAddr => {
+    emSend(em.xdaliAppCommand('query', emAddr(), emDev(), em.formatShortAddr(shortAddr), em.OPCODE.QUERY_EMERGENCY_STATUS));
+    emSend(em.xdaliAppCommand('query', emAddr(), emDev(), em.formatShortAddr(shortAddr), em.OPCODE.QUERY_FAILURE_STATUS));
+  });
+}
+
+function assignEmGroup(group) {
+  if (window.emUi.selected == null) return;
+  const name = document.getElementById('em-fitting-name');
+  upsertEmFitting({
+    shortAddr: window.emUi.selected,
+    groups: [group],
+    name: name ? name.value.slice(0, 18) : ''
+  });
+  emSend(em.xdaliAddToGroup(emAddr(), emDev(), window.emUi.selected, group));
+  emSend('$DALIREPAIR,' + em.pad(emAddr(), 3) + ',' + em.pad(emDev(), 3) + ',' +
+    em.formatShortAddr(window.emUi.selected) + ',' + em.formatShortAddr(window.emUi.selected) + ';');
+  renderEmDali();
+}
+
+function startEmGroupTest(group, kind) {
+  const id = 'G' + group;
+  if (kind === 'duration') startEmDurationTest(id);
+  else startEmFunctionTest(id);
+}
+
+function daliLoopAddr() {
+  return document.getElementById('dali-ubc') ? document.getElementById('dali-ubc').value : emAddr();
+}
+
+function toggleDaliBroadcast() {
+  const ubc = document.getElementById('em-ubc');
+  if (ubc) ubc.value = daliLoopAddr();
+  toggleEmBroadcastIdentify();
+  const btn = document.getElementById('dali-broadcast-btn');
+  if (btn) btn.textContent = window.emUi.broadcastOn ? 'Stop EM Identify Broadcast' : 'Start EM Identify Broadcast';
+}
+
+function toggleDaliBST() {
+  if (daliBSTInterval) {
+    clearInterval(daliBSTInterval);
+    daliBSTInterval = null;
+    emSend(em.showDaliOff(daliLoopAddr(), emDev()));
+    const btn = document.getElementById('dali-bst-btn');
+    if (btn) btn.textContent = 'Start DALI BST';
+    return;
+  }
+  const btn = document.getElementById('dali-bst-btn');
+  if (btn) btn.textContent = 'Stop DALI BST';
+  daliBSTState = true;
+  daliBSTInterval = setInterval(() => {
+    emSend(daliBSTState
+      ? '$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,255,0;'
+      : '$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,0,0;');
+    daliBSTState = !daliBSTState;
+  }, 800);
+}
+
+function sendDaliOn() {
+  emSend('$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,255,200;');
+}
+
+function sendDaliOff() {
+  emSend('$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,0,200;');
+}
+
+function selectedDaliFitting() {
+  const select = document.getElementById('dali-fitting-id');
+  return select ? parseInt(select.value, 10) : 0;
+}
+
+function toggleDaliFittingEMIdentify() {
+  window.emUi.selected = selectedDaliFitting();
+  startEmSelectedAction();
+}
+
+function sendDaliFittingFunctionTest() {
+  window.emUi.selected = selectedDaliFitting();
+  startEmFunctionTest();
+}
+
+function toggleDaliFittingFlash() {
+  const shortAddr = selectedDaliFitting();
+  if (flashDaliFittingInterval) {
+    clearInterval(flashDaliFittingInterval);
+    flashDaliFittingInterval = null;
+    emSend(em.showDaliOff(daliLoopAddr(), emDev()));
+    const btn = document.getElementById('dali-fitting-flash-btn');
+    if (btn) btn.textContent = 'Flash Fitting';
+    return;
+  }
+  const btn = document.getElementById('dali-fitting-flash-btn');
+  if (btn) btn.textContent = 'Stop Flash';
+  flashDaliFittingState = true;
+  flashDaliFittingInterval = setInterval(() => {
+    if (flashDaliFittingState) emSend(em.showDaliFixture(daliLoopAddr(), emDev(), shortAddr));
+    else emSend(em.showDaliOff(daliLoopAddr(), emDev()));
+    flashDaliFittingState = !flashDaliFittingState;
+  }, 700);
+}
+
+window.renderEmDali = renderEmDali;
+window.loadEmDaliFixtures = loadEmDaliFixtures;
+window.toggleEmBroadcastIdentify = toggleEmBroadcastIdentify;
+window.startEmSelectedAction = startEmSelectedAction;
+window.startEmFunctionTest = startEmFunctionTest;
+window.startEmDurationTest = startEmDurationTest;
+window.stopEmDaliTests = stopEmDaliTests;
+window.refreshEmTestResults = refreshEmTestResults;
+window.assignEmGroup = assignEmGroup;
+window.startEmGroupTest = startEmGroupTest;
+window.applyEmDaliLog = applyEmDaliLog;
+window.toggleDaliBroadcast = toggleDaliBroadcast;
+window.toggleDaliBST = toggleDaliBST;
+window.sendDaliOn = sendDaliOn;
+window.sendDaliOff = sendDaliOff;
+window.toggleDaliFittingEMIdentify = toggleDaliFittingEMIdentify;
+window.sendDaliFittingFunctionTest = sendDaliFittingFunctionTest;
+window.toggleDaliFittingFlash = toggleDaliFittingFlash;
+
 // =============================================================================
 // Area Section Functions
 // =============================================================================
@@ -173,6 +465,7 @@ function applyParsedSceneEvents(events) {
 function applyGatewayLogMessage(message) {
   const events = parseSceneEvents(message);
   if (events.length) applyParsedSceneEvents(events);
+  if (typeof applyEmDaliLog === 'function') applyEmDaliLog(message);
 }
 
 function currentConnectionType() {

@@ -8,6 +8,7 @@ A web-based control interface for eDin+ Gateway devices. This application talks 
 - Keypad Configuration and Control
 - Channel Fade Control
 - DALI Device Management
+- EM Dali commissioning and IEC 62386-202 tests
 - Area and Scene Management
 - Real-time Command Testing
 

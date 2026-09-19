@@ -481,6 +481,7 @@ Plate palette `0–16`: Black, White, Red, Green, Blue, Orange, Cyan, Magenta, Y
 | Adjust modal | `$SCNRECALLX` then `$SCNSAVE` |
 | Keypad | `$BTNSTATE` |
 | DALI page | Broadcast / BST / fitting identify |
+| EM Dali | eTEST flow: load `?DALIFIX`, IEC 62386-202 identify / function / duration via `$XDALIAPP`, groups 14 / 15 |
 | Preview `?preview=1` | Demo house; Setup **Test Command** can inject `!SCNSTATE,…` locally |
 | Project catalog | Setup **Load project from gateway** — HTTP GET `/info?what=names` and `what=levels`, then Control/Adjust use that channel list |
 
@@ -860,7 +861,29 @@ Volume 3 v2.0.3 marks this chapter **to be completed**. No GATEWAY tokens yet.
 
 ---
 
-## 19. XDALI (DALI back door)
+## 19. Emergency DALI (this app)
+
+Volume 3 replaced the old `$EMTEST` trial with **`$XDALIAPP`** (device type **1** = IEC 62386-202 emergency lighting). The **EM Dali** page follows the eTEST Lighting app:
+
+1. Finish normal eDIN commissioning first. On the NPU web UI (**System Health and Repair → DALI Commissioning**) run an Advanced DALI scan and confirm the fixture count.
+2. Identify which fittings sit on which UBC (broadcast EM identify — gear flashes green / red).
+3. Walk fittings 0–63. Mark **group A = 14** and **group B = 15** on the drawing (half the loop each).
+4. Fittings that will not identify: start a **function test** and find them on the floor.
+5. Instant-run function / duration tests here. Typical site schedule (28-day function pair, yearly duration pair, 1 hour / 48 hours apart) still lives on the eTEST tablet.
+6. Refresh reads emergency status (opcode 253) and failure status (opcode 252). Green tile = function + duration valid + battery charged and no failure bits.
+
+```
+$XDALIAPP,<addr>,017,BST,240,1;     # start identification (broadcast)
+$XDALIAPPX2,<addr>,017,F04,227,1;   # function test
+$XDALIAPPX2,<addr>,017,G14,228,1;   # duration test on group 14
+?XDALIAPP,<addr>,017,F04,253,1;     # emergency status
+$XDALIX2,<addr>,017,F04,110;        # add to group 14
+$DALIREPAIR,<addr>,017,F04,F04;     # push commissioning / groups
+```
+
+---
+
+## 20. XDALI (DALI back door)
 
 Sends **16-bit Control Gear DALI-2** frames on a UBC. Does **not** send 24-bit Control Device frames. Bypasses eDIN+ scene/channel logic. Admin required. Find UBCs with `?MODULENAME,17;`.
 
@@ -932,7 +955,7 @@ $XDALISPX2,3,17,165,0;
 
 ---
 
-## 20. Debugging on the wire
+## 21. Debugging on the wire
 
 ```
 $DBGACK,1;     # long !OK,<command>,…;
