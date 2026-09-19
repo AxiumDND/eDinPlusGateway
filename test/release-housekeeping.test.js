@@ -45,7 +45,7 @@ test('README points at the live repo, changelog, and MIT license', () => {
   assert.match(readme, /github\.com\/AxiumDND\/eDinPlusGateway/);
   assert.match(readme, /CHANGELOG\.md/);
   assert.match(readme, /LICENSE/);
-  assert.match(readme, /1\.5\.0/);
+  assert.match(readme, new RegExp(pkg.version.replace(/\./g, '\\.')));
 });
 
 test('Dependabot stack is on current majors', () => {
