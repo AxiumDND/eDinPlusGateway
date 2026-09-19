@@ -11,6 +11,7 @@ This document outlines the ASCII-based command protocol used to communicate dire
 *   **Initial Connection:** Upon successful connection, the gateway may send `!GATRDY;` followed by `!VERSION,<version-text>;`.
 *   **Identifiers:** `addr` (MBus address), `devcode` (device code), and `chan-num` (channel number, or `zone-num` for DMX, `dali-num` or `dali-id` for DALI) are crucial for targeting specific devices and channels. Parameter values are typically decimal unless otherwise specified (e.g., hex colors).
 *   **Parameter Separator:** Commas (`,`) are used to separate parameters in commands and responses.
+*   **HTTP first:** This app uses `POST /gateway?` by default. Raw TCP port 26 is fallback only (the NPU allows **4** TCP sessions — close them with FIN). HTTP cannot receive unsolicited events; poll `?SCNS` or `/info`.
 *   **Event Handling:** The gateway can send asynchronous event messages. Connection must be continuous (RS232, Raw IP) not HTTP for event-driven feedback. Events must be explicitly enabled.
 
 ## General Gateway Operations
