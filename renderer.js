@@ -175,18 +175,50 @@ function applyGatewayLogMessage(message) {
   if (events.length) applyParsedSceneEvents(events);
 }
 
-function enableSceneFeedback() {
-  const connectionType = document.getElementById('connectionType')
+function currentConnectionType() {
+  return document.getElementById('connectionType')
     ? document.getElementById('connectionType').value
-    : 'http';
-  if (connectionType !== 'tcp') return;
+    : (localStorage.getItem('CONNECTION_TYPE') || 'http');
+}
+
+function stopHttpScenePoll() {
+  if (window.areaUi.scenePollTimer) {
+    clearInterval(window.areaUi.scenePollTimer);
+    window.areaUi.scenePollTimer = null;
+  }
+}
+
+function startHttpScenePoll() {
+  stopHttpScenePoll();
+  if (currentConnectionType() === 'tcp') return;
+  window.areaUi.scenePollTimer = setInterval(() => {
+    if (!window.areaUi.sceneFeedbackOn) return;
+    if (typeof sendCommand === 'function') sendCommand('?SCNS;');
+  }, 4000);
+}
+
+function enableSceneFeedback() {
+  const connectionType = currentConnectionType();
   window.areaUi.sceneFeedbackOn = true;
   if (typeof sendCommand === 'function') {
     window.areaUi.expectingSceneArea = null;
-    sendCommand('$EVTSCN,1;');
+    if (connectionType === 'tcp') {
+      sendCommand('$EVTSCN,1;');
+    }
     sendCommand('?SCNNAMES;');
     sendCommand('?SCNS;');
   }
+  startHttpScenePoll();
+}
+
+function bindConnectionType() {
+  const select = document.getElementById('connectionType');
+  if (!select || select.dataset.boundFeedback === '1') return;
+  select.dataset.boundFeedback = '1';
+  select.addEventListener('change', () => {
+    localStorage.setItem('CONNECTION_TYPE', select.value);
+    if (window.areaUi.sceneFeedbackOn) enableSceneFeedback();
+  });
 }
 
 window.applyGatewayLogMessage = applyGatewayLogMessage;
@@ -195,6 +227,15 @@ window.rememberScenes = rememberScenes;
 window.enableSceneFeedback = enableSceneFeedback;
 window.applyInfoCatalog = applyInfoCatalog;
 window.refreshInfoCatalog = refreshInfoCatalog;
+window.bindConnectionType = bindConnectionType;
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindConnectionType);
+  } else {
+    bindConnectionType();
+  }
+}
 
 function applyInfoCatalog(namesText, levelsText) {
   const names = parseInfoNamesFile(namesText || '');
@@ -1515,6 +1556,9 @@ function saveSettings() {
     IP_ADDRESS: document.getElementById('ipAddress')
       ? document.getElementById('ipAddress').value
       : localStorage.getItem("IP_ADDRESS") || "192.168.1.100",
+    CONNECTION_TYPE: document.getElementById('connectionType')
+      ? document.getElementById('connectionType').value
+      : localStorage.getItem("CONNECTION_TYPE") || "http",
     USERNAME: document.getElementById('username')
       ? document.getElementById('username').value
       : localStorage.getItem("USERNAME") || "Configurator",
@@ -1525,8 +1569,10 @@ function saveSettings() {
   console.log("DEBUG: Saving Settings:", newSettings);
   window.electronAPI.updateSettings(newSettings);
   localStorage.setItem("IP_ADDRESS", newSettings.IP_ADDRESS);
+  localStorage.setItem("CONNECTION_TYPE", newSettings.CONNECTION_TYPE);
   localStorage.setItem("USERNAME", newSettings.USERNAME);
   localStorage.setItem("PASSWORD", newSettings.PASSWORD);
+  enableSceneFeedback();
 }
 
 function testConnection() {
@@ -1758,6 +1804,10 @@ if (window.electronAPI && typeof window.electronAPI.onLoadSettings === 'function
   console.log("DEBUG: Loaded settings:", settings);
   if (document.getElementById('ipAddress') && settings.IP_ADDRESS) {
     document.getElementById('ipAddress').value = settings.IP_ADDRESS;
+  }
+  if (document.getElementById('connectionType') && settings.CONNECTION_TYPE) {
+    document.getElementById('connectionType').value = settings.CONNECTION_TYPE;
+    localStorage.setItem('CONNECTION_TYPE', settings.CONNECTION_TYPE);
   }
   if (document.getElementById('username') && settings.USERNAME) {
     document.getElementById('username').value = settings.USERNAME;

@@ -1,6 +1,6 @@
 # eDin+ Gateway Control
 
-A web-based control interface for eDin+ Gateway devices. This application provides a user-friendly interface for configuring and controlling eDin+ Gateway systems, including keypad configuration, channel control, DALI management, and area/scene control.
+A web-based control interface for eDin+ Gateway devices. This application talks HTTP first (`POST /gateway?` and `GET /info`) and falls back to TCP port 26 if HTTP fails. It provides a user-friendly interface for configuring and controlling eDin+ Gateway systems, including keypad configuration, channel control, DALI management, and area/scene control.
 
 ## Features
 

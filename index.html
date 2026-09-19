@@ -49,19 +49,16 @@
     <!-- Setup Section -->
     <div id="setup" class="section">
       <h2>Gateway Setup</h2>
-      <p class="info-text">Scene feedback (plates, other apps, this app) needs a live TCP connection:
-      1. Select "TCP/IP (Port 26)" as the Connection Type
-      2. Click Event Report ON after connecting — that turns on $EVTSCN so Control tiles and scene chips follow !SCNSTATE / scene-action events
-      
-      HTTP can only see replies to commands you send. It cannot receive live scene events.</p>
+      <p class="info-text">HTTP is the normal path (<code>POST /gateway?</code> and <code>GET /info</code>). TCP port 26 is used automatically if HTTP errors or times out, or if you pick “TCP only”.</p>
+      <p class="info-text">Control scene tiles follow polled <code>?SCNS</code> on HTTP. Live plate events (<code>!SCNSTATE</code>) need a TCP session — choose TCP only and Event Report ON if you need those.</p>
       
       <label for="ipAddress">Gateway IP:</label>
       <input type="text" id="ipAddress" placeholder="192.168.1.100">
 
       <label for="connectionType">Connection Type:</label>
       <select id="connectionType">
-        <option value="http" selected>HTTP (Default)</option>
-        <option value="tcp">TCP/IP (Port 26)</option>
+        <option value="http" selected>HTTP (default, TCP fallback)</option>
+        <option value="tcp">TCP only (port 26)</option>
       </select>
       
       <label for="username">Username:</label>

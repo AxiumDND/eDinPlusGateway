@@ -8,6 +8,18 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const fetch = require('node-fetch/lib/index.js');
+const {
+  HTTP_TIMEOUT_MS,
+  HTTP_RETRY_AFTER_MS,
+  TCP_FALLBACK_PORT,
+  shouldSendViaTcpOnly,
+  shouldSkipHttp,
+  nextHttpUnavailableUntil,
+  gatewayPostUrl,
+  postGatewayCommand
+} = require('./gateway-http.js');
+
+let httpUnavailableUntil = 0;
 
 // =============================================================================
 // Global Variables and Settings File Path
@@ -48,7 +60,7 @@ function readSettings() {
     // If no settings file exists, create one with defaults
     const defaultSettings = {
       IP_ADDRESS: '192.168.1.100',
-      CONNECTION_TYPE: 'tcp',
+      CONNECTION_TYPE: 'http',
       USERNAME: 'Administrator',
       PASSWORD: 'mode1234'
     };
@@ -62,7 +74,7 @@ function readSettings() {
     console.error("⚠️ Error handling settings:", error);
     return {
       IP_ADDRESS: '192.168.1.100',
-      CONNECTION_TYPE: 'tcp',
+      CONNECTION_TYPE: 'http',
       USERNAME: 'Administrator',
       PASSWORD: 'mode1234'
     };
@@ -155,31 +167,51 @@ ipcMain.handle('fetch-info-catalog', async (event, opts) => {
   return { namesText, levelsText };
 });
 
-// Send command (TCP or HTTP) from renderer
+function sendViaTcp(event, commandObj, reason) {
+  const port = TCP_FALLBACK_PORT;
+  if (reason) {
+    event.reply('log-message', reason);
+  }
+  sendTCPCommand(commandObj.ip, port, commandObj.type, event, (err, response) => {
+    if (err) {
+      console.error("DEBUG: Error sending TCP command:", err);
+      event.reply('log-message', `TCP Error: ${err.message}`);
+    } else if (response) {
+      console.log("DEBUG: TCP command response:", response);
+      event.reply('log-message', `TCP Response: ${response}`);
+    }
+  });
+}
+
+function sendViaHttpThenTcp(event, commandObj) {
+  const url = commandObj.url || gatewayPostUrl(commandObj.ip, commandObj.port || 80);
+  event.reply('log-message', "HTTP Sent: " + commandObj.type);
+  sendHTTPCommand(url, commandObj.type)
+    .then(responseText => {
+      httpUnavailableUntil = 0;
+      console.log("DEBUG: HTTP command response:", responseText);
+      event.reply('log-message', `HTTP Response: ${responseText}`);
+    })
+    .catch(error => {
+      console.error("DEBUG: HTTP command error:", error);
+      event.reply('log-message', `HTTP Error: ${error.message}`);
+      httpUnavailableUntil = nextHttpUnavailableUntil(Date.now(), HTTP_RETRY_AFTER_MS);
+      sendViaTcp(event, commandObj, `HTTP failed — falling back to TCP port ${TCP_FALLBACK_PORT}`);
+    });
+}
+
+// Send command: HTTP first, TCP port 26 if HTTP fails or Setup is TCP only
 ipcMain.on('send-command', (event, commandObj) => {
   console.log("DEBUG: Main Process Received Command:", commandObj);
-  if (commandObj.connection === 'tcp') {
-    sendTCPCommand(commandObj.ip, commandObj.port, commandObj.type, event, (err, response) => {
-      if (err) {
-        console.error("DEBUG: Error sending TCP command:", err);
-        event.reply('log-message', `TCP Error: ${err.message}`);
-      } else {
-        console.log("DEBUG: TCP command response:", response);
-        event.reply('log-message', `TCP Response: ${response}`);
-      }
-    });
-  } else {
-    event.reply('log-message', "HTTP Sent: " + commandObj.type);
-    sendHTTPCommand(commandObj.url, commandObj.type)
-      .then(responseText => {
-        console.log("DEBUG: HTTP command response:", responseText);
-        event.reply('log-message', `HTTP Response: ${responseText}`);
-      })
-      .catch(error => {
-        console.error("DEBUG: HTTP command error:", error);
-        event.reply('log-message', `HTTP Error: ${error.message}`);
-      });
+  if (shouldSendViaTcpOnly(commandObj.connection)) {
+    sendViaTcp(event, commandObj);
+    return;
   }
+  if (shouldSkipHttp(httpUnavailableUntil, Date.now())) {
+    sendViaTcp(event, commandObj, `HTTP recently failed — using TCP port ${TCP_FALLBACK_PORT}`);
+    return;
+  }
+  sendViaHttpThenTcp(event, commandObj);
 });
 
 // New IPC Handler: Open the scene edit pop-up window
@@ -269,15 +301,11 @@ function sendTCPCommand(ip, port, command, event, callback) {
 function sendHTTPCommand(url, command) {
   console.log(`DEBUG: Sending HTTP Request to: ${url}`);
   console.log(`DEBUG: HTTP Payload: ${command}`);
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: command
-  })
-  .then(response => {
-    console.log("DEBUG: HTTP Response Status:", response.status);
-    return response.text();
-  });
+  return postGatewayCommand(fetch, url, command, HTTP_TIMEOUT_MS)
+    .then(text => {
+      console.log("DEBUG: HTTP Response Status: OK");
+      return text;
+    });
 }
 
 // Add cleanup on app quit

@@ -10,7 +10,7 @@ Developer notes for this repo. Official Mode Lighting manuals live in [`GatewayP
 
 The long command dump is still in [`gateway_readme.md`](../gateway_readme.md). Parsers used by the app are in [`gateway-protocol.js`](../gateway-protocol.js).
 
-This page is the working map for Volumes 1–3: message grammar, events, scene feedback, and the developer APIs (`/info` CSV, `$SCNSET`, `$MASTERTICK`, DALI repair, XDALI).
+This page is the working map for Volumes 1–3. **This app talks HTTP first** (`POST /gateway?` and `GET /info`). TCP port 26 is only used if HTTP fails, or if you force “TCP only” in Setup.
 
 ---
 
@@ -49,26 +49,160 @@ Most sessions send credentials first:
 $User,<username>,<password>;
 ```
 
-HTTP can instead use Basic Auth. HTTP **closes after each request**, so it never receives unsolicited events.
+HTTP can instead use Basic Auth. HTTP **closes after each request**, so it never receives unsolicited events — poll `?SCNS` / use `/info` instead.
 
 ---
 
-## 2. TCP vs HTTP (this app)
+## 2. How this app connects (HTTP first)
 
-| | HTTP (`/gateway?`) | TCP port 26 |
-|--|--------------------|-------------|
-| Commands and query replies | Yes | Yes |
-| Live events (plates, scenes, channels) | No | Yes, if enabled |
-| Scene feedback in Control | Snapshot only (`?SCNS`) | Live `!SCNSTATE` / action events |
+Volume 1 describes three monitoring styles. We use **control + polled queries** on HTTP (the style it calls “most straightforward”). TCP events are a fallback, not the default.
 
-**Scene feedback path used by this app**
+| Path | When |
+|------|------|
+| `POST http://<ip>/gateway?` `Content-Type: text/plain` | **Normal.** Every `$` / `?` goes here first |
+| `GET http://<ip>/info?what=names\|levels` | Project catalog (Volume 3) |
+| TCP port 26 | **Fallback** if HTTP errors or times out (this app retries HTTP after 30s), or Setup is set to TCP only |
 
-1. Connection type = TCP/IP (port 26)
-2. `$EVENTS,1;` and/or `$EVTSCN,1;`
-3. Catalog: `?SCNNAMES;` then snapshot: `?SCNS;`
-4. Listen for `!SCNSTATE` and scene-action events
+NPU must have firmware **2.0.0.0+** and a loaded configuration. Enable the web server (default). For TCP fallback: Settings → Network services → Enable gateway control, port 26. Idle TCP sessions close after **1 hour** without `$OK;` / events.
+
+**Scene state on HTTP:** `GET /info` + `?SCNNAMES` / `?SCNS` (polled). No `!SCNSTATE` until a TCP session exists.
 
 ---
+
+## Volume 1 — Standard
+
+Source: *Gateway Interface Vol 1 — Standard v2.0.3* (16 Aug 2024). Everyday commands any user can send. Prefer **Scene/System API** when the NPU controller is active; Channel API overrides that controller and can fight plates.
+
+### Three ways to use the API
+
+| Style | Connection | Notes |
+|-------|------------|-------|
+| Control only | HTTP, TCP, RS232 | Send `$` commands; ignore replies |
+| Control + poll (this app) | **HTTP** (also TCP) | `?` when you need state; no long session |
+| Event-driven | **TCP / RS232 only** | `$EVTSCN` etc.; HTTP cannot publish events |
+
+### Connections (NPU)
+
+| Kind | How | Session |
+|------|-----|---------|
+| HTTP | `POST /gateway?` (the `?` is required), body = one or more `$`/`?` lines | One request; no events |
+| Raw TCP | Port 26 (configurable). Greeting `!GATRDY;` `!VERSION,…;` | Long-lived; max ~4 per NPU |
+| RS232 | Settings → RS232 → Gateway Control | Open until reassigned |
+| EVO-INT232 | On MBus, **not** in the project file; 9600 8N1 fixed | Max 2; greeting on power-up |
+
+Several sessions can be open at once. HTTP count is “however many requests the NPU can take”.
+
+Smoke test: `$OK;` → `!OK;`.
+
+### Syntax (Volume 1 §3)
+
+- UTF-8. No spaces except inside text fields.
+- Commands `$id,params;`, queries `?id,params;`, replies/events `!id,params;`.
+- Case-insensitive on the way in; replies are **uppercase** with optional leading zeros and CR/LF after `;`.
+- Extra junk between messages is ignored.
+
+**Acks:** every `$`/`?` gets `!OK` (syntax accepted) or `!BAD` (unrecognised). `!OK` does **not** mean the scene/channel existed or the action ran. Wrong scene numbers still ack and then go silent.
+
+`$DBGACK` long ack (default on for HTTP). `$DBGECHO` echo (default off). Echo prints `.` for bad characters.
+
+**Versions:** `?VERSION;`. Ignore unknown `!` messages from newer gateways. Major version mismatch = treat as incompatible. v2 vs v1.x breaking changes:
+
+- `?SCN` gained `<level>`
+- `!SCN` event replaced by `!SCNSTATE`
+- DMX extended for RGB / TW
+- `?CHAN` / `?DALI` / `?DMX` / `?INP` now return **several** reply lines (health, level, colour)
+- `$CHANSTATE` replaced by `$CHANFADE` / `$CHANPULSE`
+- Scene channel discovery changed for RGB/TW
+- User login: plain (non-encoded) passwords are normal
+- XDALI replaces trial EMTEST
+
+### Interface API
+
+| Message | Role |
+|---------|------|
+| `$OK;` | Null / keep-alive |
+| `?VERSION;` | `!VERSION,<text>;` |
+| `$DBGACK,<0\|1>;` / `?DBGACK;` | Long `!OK,<id>,…;` |
+| `$DBGECHO,<0\|1>;` / `?DBGECHO;` | Echo sent chars |
+| `$EVENTS,<0\|1>;` | All event classes (Volume 2 for per-class) |
+
+TCP/RS232 greeting: `!GATRDY;` then `!VERSION,…;`.
+
+### Scene and System API (standard)
+
+Use these when the in-built controller is running.
+
+**Discovery**
+
+```
+?AREANAMES;     !AREANAME,<area>,<access>,<content>,<name>;
+?SCNNAMES;      !SCNNAME,<scn>,<access>,<area>,<name>;
+?SCNNAMES,<area>;
+```
+
+**Recall / save**
+
+| Command | Effect |
+|---------|--------|
+| `$SCNRECALL,<n>;` | Default level and fade |
+| `$SCNOFF,<n>;` | Level 0, scene fade |
+| `$SCNRECALLX,<n>,<level>,<fade-ms>;` | Explicit |
+| `$SCNONOFF,<n>;` | Standard on/off toggle |
+| `$SCNSAVE,<n>;` | Write **live** levels into the scene |
+
+**Status**
+
+```
+?SCNS;  ?SCNS,<area>;  ?SCN,<n>;
+!SCN,<n>,<mode>,<flags>,<state-0-1>,<level-0-255>;
+```
+
+**Health / stamp**
+
+```
+?ERRORS;
+?SYSTEMID;    !SYSTEMID,<serial>,<edit-stamp>,<adjust-stamp>;
+```
+
+**Scene channels (live look)**
+
+```
+?SCNCHANNAMES,<n>;
+?SCNCHANSTATES,<n>;
+```
+
+Prefer `/info?what=levels` when you want every scene’s stored look in one GET.
+
+### Channel API (standard)
+
+Talks to hardware. Do not fade channels while the NPU controller owns them unless you intend to override.
+
+Identify: `<addr>,<devcode>,<chan|dali|zone>`. Plates: `<addr>,<devcode>,<btn>`.
+
+| Command / query | Role |
+|-----------------|------|
+| `$CHANFADE` / `$DALIFADE` / `$DMXFADE` | Level 0–255 + fade ms |
+| `$CHANSTOP` / `$DALISTOP` / `$DMXSTOP` | Stop fade |
+| `?CHAN` / `?DALI` / `?DMX` | Status (multiple `!` lines in v2) |
+| `$BTNCOLR` / `$BTNTEXT` | Plate LED / legend |
+| `$BTNSTATE` | Inject press (see button states) |
+| `?BTN` family | Button status |
+| `$CHANRGBCOLRFADE` / `$CHANTWCOLRFADE` | Colour / kelvin |
+| `?CHANRGB` / `?CHANTW` | Colour status |
+| `?INP` | Input status |
+
+### Troubleshooting (Volume 1 §4)
+
+| Symptom | Check |
+|---------|-------|
+| No `!OK` to `$OK;` | Web server / gateway port / IP / cable |
+| `!BAD` | Unknown token or missing `;` — `$DBGECHO,1;` |
+| `!OK` then nothing | Parameters do not exist in this config |
+| HTTP works, no plate events | Expected — poll or fall back to TCP |
+| TCP drops after idle | Send `$OK;` within the hour |
+
+---
+
 
 ## 3. Event classes
 
