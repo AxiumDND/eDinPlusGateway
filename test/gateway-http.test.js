@@ -36,7 +36,7 @@ test('postGatewayCommand returns body when OK', async () => {
   const fetchFn = async (url, opts) => {
     assert.equal(opts.method, 'POST');
     assert.equal(opts.body, '$OK;');
-    assert.equal(opts.timeout, 1000);
+    assert.ok(opts.signal, 'native fetch uses AbortSignal for timeout');
     return { ok: true, status: 200, text: async () => '!OK;' };
   };
   assert.equal(await http.postGatewayCommand(fetchFn, 'http://npu/gateway?', '$OK;', 1000), '!OK;');
