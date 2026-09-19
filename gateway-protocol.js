@@ -1,5 +1,5 @@
 // Shared gateway parsing and Control helpers. Safe to load in the browser or Node.
-
+(function (root) {
 function pad(num, size) {
   return num.toString().padStart(size, '0');
 }
@@ -332,6 +332,5 @@ const gatewayProtocol = {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = gatewayProtocol;
 }
-if (typeof window !== 'undefined') {
-  window.gatewayProtocol = gatewayProtocol;
-}
+if (root) root.gatewayProtocol = gatewayProtocol;
+})(typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? globalThis : null);
