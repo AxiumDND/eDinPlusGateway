@@ -1,6 +1,6 @@
 {
   "name": "edin_gateway",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Electron app to send commands to lighting gateway via HTTP, with TCP port 26 as fallback",
   "main": "main.js",
   "scripts": {

@@ -17,7 +17,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: Shown under the sidebar logo (for example v1.5.0)
+      description: Shown under the sidebar logo (for example v1.5.1)
     validations:
       required: true
   - type: textarea

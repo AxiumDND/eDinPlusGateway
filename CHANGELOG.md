@@ -5,6 +5,8 @@ The version in `package.json` is the source of truth. GitHub Releases are create
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-19
+
 ### Changed
 - Dependabot updates: Electron 44, electron-builder 26, GitHub Actions checkout/setup-node/release v7/v3
 - Drop `node-fetch` (v3 is ESM-only); HTTP uses built-in `fetch` with an abort timeout

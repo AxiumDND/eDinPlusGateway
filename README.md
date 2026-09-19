@@ -2,7 +2,7 @@
 
 Electron desktop app for an eDIN+ / Mode lighting NPU. **HTTP is the main path** (`POST /gateway?` and `GET /info`). TCP port 26 is only used if HTTP fails, or if Setup is set to TCP only. Each NPU accepts **four** TCP sessions — this app keeps at most one and FIN-closes it.
 
-**Current version:** 1.5.0 — [changelog](CHANGELOG.md)
+**Current version:** 1.5.1 — [changelog](CHANGELOG.md)
 
 ## Features
 
