@@ -1573,7 +1573,25 @@ function saveSettings() {
   localStorage.setItem("USERNAME", newSettings.USERNAME);
   localStorage.setItem("PASSWORD", newSettings.PASSWORD);
   enableSceneFeedback();
+  if (newSettings.CONNECTION_TYPE !== 'tcp' && typeof closeTcpSession === 'function') {
+    closeTcpSession();
+  }
 }
+
+async function closeTcpSession() {
+  if (!window.electronAPI || typeof window.electronAPI.closeTcpSession !== 'function') {
+    if (typeof logMessage === 'function') logMessage('Close TCP session is only available in the desktop app.');
+    return;
+  }
+  try {
+    await window.electronAPI.closeTcpSession();
+    if (typeof logMessage === 'function') logMessage('Requested TCP session close.');
+  } catch (err) {
+    if (typeof logMessage === 'function') logMessage('TCP close failed: ' + err.message);
+  }
+}
+
+window.closeTcpSession = closeTcpSession;
 
 function testConnection() {
   const prefix = getUserPrefix();

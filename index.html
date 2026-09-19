@@ -51,6 +51,7 @@
       <h2>Gateway Setup</h2>
       <p class="info-text">HTTP is the normal path (<code>POST /gateway?</code> and <code>GET /info</code>). TCP port 26 is used automatically if HTTP errors or times out, or if you pick “TCP only”.</p>
       <p class="info-text">Control scene tiles follow polled <code>?SCNS</code> on HTTP. Live plate events (<code>!SCNSTATE</code>) need a TCP session — choose TCP only and Event Report ON if you need those.</p>
+      <p class="info-text">Each NPU only accepts <strong>4 TCP sessions</strong>. This app keeps at most one, FIN-closes it after a fallback command, when you leave TCP-only, or when the window quits. A session that is not closed cleanly can occupy a slot until the NPU times it out (about an hour), and then new TCP connects are refused.</p>
       
       <label for="ipAddress">Gateway IP:</label>
       <input type="text" id="ipAddress" placeholder="192.168.1.100">
@@ -68,6 +69,7 @@
       <input type="password" id="password" placeholder="mode1234">
 
       <button onclick="saveSettings()">Save Settings</button>
+      <button type="button" onclick="closeTcpSession()">Close TCP session</button>
 
       <h2>Project catalog</h2>
       <p class="info-text">Load names, channel types, and scene levels in one go via HTTP GET <code>/info?what=names</code> and <code>/info?what=levels</code> (Volume 3). Uses the username/password above as Basic Auth. Works even when Control events use TCP. Then Control can show every scene’s channels without waiting on <code>?SCNCHANNAMES</code>.</p>

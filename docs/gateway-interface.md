@@ -65,6 +65,8 @@ Volume 1 describes three monitoring styles. We use **control + polled queries** 
 
 NPU must have firmware **2.0.0.0+** and a loaded configuration. Enable the web server (default). For TCP fallback: Settings → Network services → Enable gateway control, port 26. Idle TCP sessions close after **1 hour** without `$OK;` / events.
 
+**TCP slots:** the NPU accepts **4** raw TCP sessions. This app holds **at most one**. HTTP fallback opens TCP for that command only, then FIN-closes. TCP-only reuses one session and closes it when you leave TCP-only, change IP, click **Close TCP session**, or quit. If a client crashes or `destroy()`s the socket, the NPU can refuse further connects until that slot times out.
+
 **Scene state on HTTP:** `GET /info` + `?SCNNAMES` / `?SCNS` (polled). No `!SCNSTATE` until a TCP session exists.
 
 ---
@@ -86,7 +88,7 @@ Source: *Gateway Interface Vol 1 — Standard v2.0.3* (16 Aug 2024). Everyday co
 | Kind | How | Session |
 |------|-----|---------|
 | HTTP | `POST /gateway?` (the `?` is required), body = one or more `$`/`?` lines | One request; no events |
-| Raw TCP | Port 26 (configurable). Greeting `!GATRDY;` `!VERSION,…;` | Long-lived; max ~4 per NPU |
+| Raw TCP | Port 26 (configurable). Greeting `!GATRDY;` `!VERSION,…;` | Long-lived; **max 4 per NPU**. A session that is RST or abandoned still occupies a slot until the idle timeout (~1 hour). Always FIN-close (`socket.end`), never leave sockets hanging. |
 | RS232 | Settings → RS232 → Gateway Control | Open until reassigned |
 | EVO-INT232 | On MBus, **not** in the project file; 9600 8N1 fixed | Max 2; greeting on power-up |
 
@@ -200,6 +202,7 @@ Identify: `<addr>,<devcode>,<chan|dali|zone>`. Plates: `<addr>,<devcode>,<btn>`.
 | `!OK` then nothing | Parameters do not exist in this config |
 | HTTP works, no plate events | Expected — poll or fall back to TCP |
 | TCP drops after idle | Send `$OK;` within the hour |
+| NPU refuses a new TCP connect | Four slots are full — leftover sessions that did not FIN-close. Wait for the idle timeout, power-cycle only as a last resort, and close this app’s session from Setup |
 
 ---
 
