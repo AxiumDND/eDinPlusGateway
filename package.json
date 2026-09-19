@@ -12,7 +12,7 @@
     "changelog": "node scripts/changelog-notes.js"
   },
   "devDependencies": {
-    "electron": "^27.0.0",
+    "electron": "^44.4.1",
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
