@@ -1,5 +1,7 @@
 # eDin+ Gateway ASCII Command Protocol Summary
 
+**Start here for day-to-day work:** [docs/gateway-interface.md](docs/gateway-interface.md) (tables, scene feedback, what the app uses). This file is the longer command list.
+
 This document outlines the ASCII-based command protocol used to communicate directly with the eDin+ Gateway hardware. This information is crucial for developing applications, like the associated Electron project, to control the eDin+ lighting system.
 
 ## General Notes:

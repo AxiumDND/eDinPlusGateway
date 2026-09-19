@@ -42,6 +42,14 @@ Gateway parsing and Control helpers are covered by Node's built-in test runner:
 npm test
 ```
 
+## Gateway protocol
+
+Working reference for ASCII commands, scene events, and what this app implements:
+
+- [docs/gateway-interface.md](docs/gateway-interface.md)
+- Official PDFs in `GatewayPDFs/`
+- Long command list: `gateway_readme.md`
+
 ## Development
 
 This project uses:
