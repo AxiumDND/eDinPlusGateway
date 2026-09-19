@@ -49,11 +49,11 @@
     <!-- Setup Section -->
     <div id="setup" class="section">
       <h2>Gateway Setup</h2>
-      <p class="info-text">Important: To monitor live events from plates and contacts in real-time:
-      1. Select "TCP/IP (Port 26)" as your Connection Type below
-      2. Click "Event Report ON" after connecting
+      <p class="info-text">Scene feedback (plates, other apps, this app) needs a live TCP connection:
+      1. Select "TCP/IP (Port 26)" as the Connection Type
+      2. Click Event Report ON after connecting — that turns on $EVTSCN so Control tiles and scene chips follow !SCNSTATE / scene-action events
       
-      Note: HTTP mode can only receive responses to commands you send and cannot monitor live events.</p>
+      HTTP can only see replies to commands you send. It cannot receive live scene events.</p>
       
       <label for="ipAddress">Gateway IP:</label>
       <input type="text" id="ipAddress" placeholder="192.168.1.100">
@@ -405,6 +405,16 @@
         getAreaState('2').on = true;
         getAreaState('2').sceneName = 'Day';
         getAreaState('2').sceneNum = '22';
+        if (typeof rememberScenes === 'function') {
+          rememberScenes([
+            { num: '11', name: 'Evening', area: '1' },
+            { num: '12', name: 'Cook', area: '1' },
+            { num: '13', name: 'Off', area: '1' },
+            { num: '21', name: 'Evening', area: '2' },
+            { num: '22', name: 'Day', area: '2' },
+            { num: '23', name: 'Off', area: '2' }
+          ]);
+        }
         createAreaTiles(demoAreas);
         const demoScenes = {
           '1': [{ num: '11', name: 'Evening' }, { num: '12', name: 'Cook' }, { num: '13', name: 'Off' }],

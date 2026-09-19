@@ -3,9 +3,12 @@ const {
   pad,
   getChannelCategory,
   getColorType,
+  normalizeSceneNum,
   isOffScene,
   parseAreaResponse,
   parseSceneResponse,
+  parseSceneEvents,
+  reduceSceneFeedback,
   parseChannelNames,
   parseChannelStates,
   sortAreasByOrder,
@@ -60,6 +63,7 @@ function decrementFittingId() {
 function loadAreaNames() {
   createAreaTiles([]);
   sendCommand('?areanames;');
+  enableSceneFeedback();
 }
 
 
@@ -68,8 +72,92 @@ window.areaUi = window.areaUi || {
   selectedName: null,
   byArea: {},
   areas: [],
-  view: 'home'
+  view: 'home',
+  scenesByNum: {},
+  expectingSceneArea: null,
+  sceneFeedbackOn: false
 };
+
+function rememberScenes(scenes) {
+  (scenes || []).forEach(scene => {
+    const result = reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: {},
+      event: Object.assign({ kind: 'name' }, scene, { num: normalizeSceneNum(scene.num) })
+    });
+    window.areaUi.scenesByNum = result.catalog;
+  });
+}
+
+function applyParsedSceneEvents(events) {
+  (events || []).forEach(ev => {
+    if (ev.kind === 'name' && window.areaUi.expectingSceneArea && !ev.area) {
+      ev = Object.assign({}, ev, { area: normalizeSceneNum(window.areaUi.expectingSceneArea) });
+    }
+    const prevByArea = window.areaUi.byArea;
+    const areaSnapshot = {};
+    Object.keys(prevByArea).forEach(key => {
+      areaSnapshot[key] = Object.assign({}, prevByArea[key]);
+    });
+    const result = reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: areaSnapshot,
+      event: ev
+    });
+    window.areaUi.scenesByNum = result.catalog;
+    result.changedAreas.forEach(areaNum => {
+      const prev = getAreaState(areaNum);
+      const next = result.areas[areaNum];
+      const sceneChanged = normalizeSceneNum(prev.sceneNum) !== normalizeSceneNum(next.sceneNum) || prev.on !== next.on;
+      window.areaUi.byArea[areaNum] = next;
+      refreshAreaTile(areaNum);
+      if (normalizeSceneNum(window.areaUi.selectedNum) !== normalizeSceneNum(areaNum)) return;
+      refreshRoomHeader(areaNum);
+      document.querySelectorAll('.scene-button').forEach(btn => {
+        btn.classList.toggle(
+          'active',
+          next.on && normalizeSceneNum(btn.dataset.sceneNum) === normalizeSceneNum(next.sceneNum)
+        );
+      });
+      if (!sceneChanged) {
+        if (window.viewingScene && normalizeSceneNum(window.viewingScene.num) === ev.num && typeof sendCommand === 'function') {
+          sendCommand(`?SCNCHANSTATES,${ev.num};`);
+        }
+        return;
+      }
+      if (next.on && next.sceneNum) {
+        const scene = result.catalog[normalizeSceneNum(next.sceneNum)] || { num: next.sceneNum, name: next.sceneName };
+        showControlSceneChannels(scene);
+      } else {
+        clearControlSceneChannels();
+      }
+    });
+  });
+}
+
+function applyGatewayLogMessage(message) {
+  const events = parseSceneEvents(message);
+  if (events.length) applyParsedSceneEvents(events);
+}
+
+function enableSceneFeedback() {
+  const connectionType = document.getElementById('connectionType')
+    ? document.getElementById('connectionType').value
+    : 'http';
+  if (connectionType !== 'tcp') return;
+  window.areaUi.sceneFeedbackOn = true;
+  if (typeof sendCommand === 'function') {
+    window.areaUi.expectingSceneArea = null;
+    sendCommand('$EVTSCN,1;');
+    sendCommand('?SCNNAMES;');
+    sendCommand('?SCNS;');
+  }
+}
+
+window.applyGatewayLogMessage = applyGatewayLogMessage;
+window.applyParsedSceneEvents = applyParsedSceneEvents;
+window.rememberScenes = rememberScenes;
+window.enableSceneFeedback = enableSceneFeedback;
 
 function getAreaState(areaNum) {
   if (!window.areaUi.byArea[areaNum]) {
@@ -128,6 +216,7 @@ function selectArea(area) {
     scenePanel.innerHTML = '<div class="area-empty">Loading scenes…</div>';
   }
   if (typeof sendCommand === 'function') {
+    window.areaUi.expectingSceneArea = String(area.num);
     sendCommand(`?SCNNAMES,${areaNumInt};`);
   }
   if (typeof window.createDemoScenes === 'function') {
@@ -995,6 +1084,10 @@ function createSceneButtons(scenes) {
   const areaNum = window.areaUi.selectedNum;
   const areaState = areaNum ? getAreaState(areaNum) : null;
 
+  rememberScenes(scenes.map(scene => Object.assign({}, scene, {
+    area: scene.area || (areaNum ? normalizeSceneNum(areaNum) : undefined)
+  })));
+
   scenes.forEach(scene => {
     const sceneContainer = document.createElement('div');
     sceneContainer.classList.add('scene-item');
@@ -1331,14 +1424,24 @@ function testConnection() {
 
 function sendTestCommand() {
   const command = document.getElementById('testCommand').value;
-  if (command) {
-    sendCommand(command);
-  }
+  if (!command) return;
+  if (window.electronAPI) sendCommand(command);
+  else applyGatewayLogMessage(command);
 }
 
 function sendEventReportCommand(state) {
   const command = `$Events,${state};`;
   sendCommand(command);
+  if (state) {
+    sendCommand('$EVTSCN,1;');
+    window.areaUi.sceneFeedbackOn = true;
+    window.areaUi.expectingSceneArea = null;
+    sendCommand('?SCNNAMES;');
+    sendCommand('?SCNS;');
+  } else {
+    sendCommand('$EVTSCN,0;');
+    window.areaUi.sceneFeedbackOn = false;
+  }
   logMessage(`Sent Event Report ${state ? 'ON' : 'OFF'} command: ${command}`);
 }
 
@@ -1464,11 +1567,25 @@ if (window.electronAPI && typeof window.electronAPI.onLogMessage === 'function')
   if (message.includes("!AREANAME,")) {
     const areas = parseAreaResponse(message);
     createAreaTiles(areas);
-  } 
+    if (typeof sendCommand === 'function') {
+      window.areaUi.expectingSceneArea = null;
+      sendCommand('?SCNNAMES;');
+      sendCommand('?SCNS;');
+    }
+  }
   else if (message.includes("!SCNNAME,")) {
     const scenes = parseSceneResponse(message);
-    createSceneButtons(scenes);
+    rememberScenes(scenes);
+    const selected = window.areaUi.selectedNum;
+    const roomScenes = selected
+      ? scenes.filter(s => !s.area || normalizeSceneNum(s.area) === normalizeSceneNum(selected))
+      : scenes;
+    const catalogOnly = window.areaUi.expectingSceneArea == null;
+    if (!catalogOnly && window.areaUi.view === 'room' && roomScenes.length) {
+      createSceneButtons(roomScenes);
+    }
   }
+  applyGatewayLogMessage(message);
   
   // If we got channel name data, build the channel list
   if (message.includes("SCNCHANNAMES") ||
