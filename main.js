@@ -115,6 +115,46 @@ ipcMain.on('request-settings', (event) => {
 
 ipcMain.handle('get-version', () => app.getVersion());
 
+function infoBasicAuth(username, password) {
+  if (!username || !password) return {};
+  const token = Buffer.from(String(username) + ':' + String(password), 'utf8').toString('base64');
+  return { Authorization: 'Basic ' + token };
+}
+
+async function fetchInfoCsv(ip, what, username, password) {
+  const host = String(ip || '').replace(/^https?:\/\//, '').split('/')[0];
+  const url = `http://${host}/info?what=${encodeURIComponent(what)}`;
+  console.log('DEBUG: GET Info CSV', url);
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: Object.assign({ 'Content-Type': 'application/csv' }, infoBasicAuth(username, password))
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const err = new Error(`GET /info?what=${what} failed (${response.status})`);
+    err.status = response.status;
+    err.body = text.slice(0, 300);
+    throw err;
+  }
+  return text;
+}
+
+ipcMain.handle('fetch-info-catalog', async (event, opts) => {
+  const ip = opts && opts.ip;
+  const username = opts && opts.username;
+  const password = opts && opts.password;
+  const namesText = await fetchInfoCsv(ip, 'names', username, password);
+  event.sender.send('log-message', `Info CSV names: ${namesText.split(/\r\n|\n/).length} lines`);
+  let levelsText = '';
+  try {
+    levelsText = await fetchInfoCsv(ip, 'levels', username, password);
+    event.sender.send('log-message', `Info CSV levels: ${levelsText.split(/\r\n|\n/).length} lines`);
+  } catch (err) {
+    event.sender.send('log-message', `Info CSV levels skipped: ${err.message}`);
+  }
+  return { namesText, levelsText };
+});
+
 // Send command (TCP or HTTP) from renderer
 ipcMain.on('send-command', (event, commandObj) => {
   console.log("DEBUG: Main Process Received Command:", commandObj);

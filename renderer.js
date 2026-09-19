@@ -14,7 +14,12 @@ const {
   sortAreasByOrder,
   hexToRgb,
   rgbToHex,
-  sliderFillPercent
+  sliderFillPercent,
+  parseInfoNamesFile,
+  parseInfoLevelsFile,
+  buildInfoChannelIndex,
+  sceneChannelsFromInfo,
+  inferSceneArea
 } = window.gatewayProtocol;
 
 function getUserPrefix() {
@@ -64,6 +69,7 @@ function loadAreaNames() {
   createAreaTiles([]);
   sendCommand('?areanames;');
   enableSceneFeedback();
+  refreshInfoCatalog();
 }
 
 
@@ -77,6 +83,35 @@ window.areaUi = window.areaUi || {
 window.areaUi.scenesByNum = window.areaUi.scenesByNum || {};
 window.areaUi.expectingSceneArea = window.areaUi.expectingSceneArea || null;
 window.areaUi.sceneFeedbackOn = !!window.areaUi.sceneFeedbackOn;
+window.areaUi.channelsByScene = window.areaUi.channelsByScene || {};
+
+const DEMO_INFO_NAMES = [
+  '!EDIN NAMES FILE',
+  'AREA,1,Kitchen',
+  'AREA,2,Living Room',
+  'CHAN,001,12,001,1,Downlights',
+  'CHAN,001,12,002,1,Pendants',
+  'CHAN,001,17,003,1,Cove TW',
+  'CHAN,001,17,004,1,Feature RGB',
+  'CHAN,002,12,001,2,Wall wash'
+].join('\n');
+
+const DEMO_INFO_LEVELS = [
+  '!EDIN LEVELS FILE',
+  'SCENE,11,Evening',
+  'SCENE,12,Cook',
+  'SCENE,13,Off',
+  'SCENE,21,Evening',
+  'SCENE,22,Day',
+  'SCNFADE,11,1000',
+  'SCNCHANLEVEL,11,001,12,001,200',
+  'SCNCHANLEVEL,11,001,12,002,90',
+  'SCNCHANTWCOLR,11,001,17,003,#2200K',
+  'SCNCHANRGBCOLR,11,001,17,004,#FF8A3D',
+  'SCNCHANLEVEL,12,001,12,001,255',
+  'SCNCHANLEVEL,12,001,12,002,210',
+  'SCNCHANLEVEL,22,002,12,001,230'
+].join('\n');
 
 function rememberScenes(scenes) {
   (scenes || []).forEach(scene => {
@@ -158,6 +193,73 @@ window.applyGatewayLogMessage = applyGatewayLogMessage;
 window.applyParsedSceneEvents = applyParsedSceneEvents;
 window.rememberScenes = rememberScenes;
 window.enableSceneFeedback = enableSceneFeedback;
+window.applyInfoCatalog = applyInfoCatalog;
+window.refreshInfoCatalog = refreshInfoCatalog;
+
+function applyInfoCatalog(namesText, levelsText) {
+  const names = parseInfoNamesFile(namesText || '');
+  const levels = parseInfoLevelsFile(levelsText || '');
+  const nameIndex = buildInfoChannelIndex(names);
+  window.areaUi.infoNames = names;
+  window.areaUi.infoLevels = levels;
+  window.areaUi.infoNameIndex = nameIndex;
+  window.areaUi.channelsByScene = window.areaUi.channelsByScene || {};
+
+  if (names.areas && names.areas.length) {
+    createAreaTiles(names.areas);
+  } else if (levels.areas && levels.areas.length) {
+    createAreaTiles(levels.areas);
+  }
+
+  (levels.scenes || []).forEach(scene => {
+    const area = inferSceneArea(scene, nameIndex);
+    rememberScenes([{ num: scene.num, name: scene.name, area: area || undefined }]);
+    window.areaUi.channelsByScene[normalizeSceneNum(scene.num)] = sceneChannelsFromInfo(scene, nameIndex);
+  });
+
+  if (window.areaUi.view === 'room' && window.areaUi.selectedNum) {
+    const selected = normalizeSceneNum(window.areaUi.selectedNum);
+    const roomScenes = Object.keys(window.areaUi.scenesByNum)
+      .map(key => window.areaUi.scenesByNum[key])
+      .filter(scene => normalizeSceneNum(scene.area) === selected);
+    if (roomScenes.length) createSceneButtons(roomScenes);
+  }
+
+  if (typeof logMessage === 'function') {
+    logMessage(
+      `Project catalog: ${names.areas.length} areas, ${names.channels.length} named channels, ${levels.scenes.length} scenes from /info`,
+      'log-success'
+    );
+  }
+  return { names, levels };
+}
+
+async function refreshInfoCatalog() {
+  const ip = document.getElementById('ipAddress')
+    ? document.getElementById('ipAddress').value
+    : (localStorage.getItem('IP_ADDRESS') || '192.168.1.100');
+  const username = document.getElementById('username')
+    ? document.getElementById('username').value
+    : (localStorage.getItem('USERNAME') || 'Administrator');
+  const password = document.getElementById('password')
+    ? document.getElementById('password').value
+    : (localStorage.getItem('PASSWORD') || 'mode1234');
+
+  if (!window.electronAPI || typeof window.electronAPI.fetchInfoCatalog !== 'function') {
+    applyInfoCatalog(DEMO_INFO_NAMES, DEMO_INFO_LEVELS);
+    return { preview: true };
+  }
+  try {
+    if (typeof logMessage === 'function') logMessage('Loading project from http://' + ip + '/info …');
+    const pack = await window.electronAPI.fetchInfoCatalog({ ip, username, password });
+    return applyInfoCatalog(pack.namesText, pack.levelsText);
+  } catch (err) {
+    if (typeof logMessage === 'function') {
+      logMessage('Info CSV failed: ' + (err && err.message ? err.message : err), 'log-message');
+    }
+    return null;
+  }
+}
 
 function getAreaState(areaNum) {
   if (!window.areaUi.byArea[areaNum]) {
@@ -1198,11 +1300,17 @@ function showControlSceneChannels(scene) {
     list.innerHTML = '<div class="area-empty">Loading channels…</div>';
   }
 
+  const cached = window.areaUi.channelsByScene && window.areaUi.channelsByScene[normalizeSceneNum(scene.num)];
+  if (cached && cached.channels && cached.channels.length) {
+    populateChannelList(cached.channels, 'controlChannelList');
+    updateChannelControls(cached.states || []);
+  }
+
   if (typeof sendCommand === 'function') {
     sendCommand(`?SCNCHANNAMES,${scene.num};`);
   }
 
-  if (typeof window.createDemoScenes === 'function') {
+  if (!cached && typeof window.createDemoScenes === 'function') {
     const demo = getDemoSceneChannels(scene);
     populateChannelList(demo.channels, 'controlChannelList');
     updateChannelControls(demo.states);
@@ -1222,6 +1330,12 @@ function openSceneEditModal(scene) {
   document.body.style.overflow = 'hidden'; // Prevent body scrolling when modal is open
   
   window.currentEditingScene = scene;
+
+  const cached = window.areaUi.channelsByScene && window.areaUi.channelsByScene[normalizeSceneNum(scene.num)];
+  if (cached && cached.channels && cached.channels.length) {
+    populateChannelList(cached.channels, 'channelList');
+    updateChannelControls(cached.states || []);
+  }
   
   // 1) Trigger the scene with a fast fade.
   sendCommand(`$SCNRECALLX,${scene.num},255,1000;`);

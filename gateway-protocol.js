@@ -303,6 +303,197 @@ function rgbToHex(r, g, b) {
   return '#' + componentToHex(r) + componentToHex(g) + componentToHex(b);
 }
 
+function splitInfoCsvLine(line) {
+  return String(line == null ? '' : line).split(',');
+}
+
+function parseInfoCsvRows(text) {
+  return String(text || '').split(/\r\n|\n|\r/).map(line => line.replace(/\s+$/, '')).filter(line => {
+    if (!line) return false;
+    if (line.charAt(0) === '!') return false;
+    return true;
+  });
+}
+
+function parseInfoNamesFile(text) {
+  const raw = String(text || '');
+  const headerOk = /^\s*!EDIN NAMES FILE/im.test(raw);
+  const project = {};
+  const areas = [];
+  const plates = [];
+  const modules = [];
+  const channels = [];
+  parseInfoCsvRows(raw).forEach(line => {
+    const parts = splitInfoCsvLine(line);
+    const token = String(parts[0] || '').toUpperCase();
+    if (token === 'PROJECTNAME') project.name = parts.slice(1).join(',');
+    else if (token === 'PROJECTVERSION') project.version = parts.slice(1).join(',');
+    else if (token === 'PROJECTOWNER') project.owner = parts.slice(1).join(',');
+    else if (token === 'AREA' && parts.length >= 3) {
+      const num = normalizeSceneNum(parts[1]);
+      const name = parts.slice(2).join(',');
+      if (num && name) areas.push({ num, name });
+    } else if (token === 'PLATE' && parts.length >= 5) {
+      plates.push({
+        addr: parts[1],
+        devcode: parts[2],
+        area: normalizeSceneNum(parts[3]),
+        name: parts.slice(4).join(',')
+      });
+    } else if (token === 'MODULE' && parts.length >= 5) {
+      modules.push({
+        addr: parts[1],
+        devcode: parts[2],
+        area: normalizeSceneNum(parts[3]),
+        name: parts.slice(4).join(',')
+      });
+    } else if (['CHAN', 'DALI', 'DMX', 'INPSTATE', 'INPPIR', 'INPLEVEL'].indexOf(token) !== -1 && parts.length >= 6) {
+      channels.push({
+        kind: token,
+        type: infoKindToNameType(token),
+        addr: parts[1],
+        devcode: parts[2],
+        chanNum: parts[3],
+        area: normalizeSceneNum(parts[4]),
+        name: parts.slice(5).join(',')
+      });
+    }
+  });
+  return { headerOk, project, areas, plates, modules, channels };
+}
+
+function infoKindToNameType(kind) {
+  const token = String(kind || '').toUpperCase();
+  if (token === 'DALI' || token === 'SCNDALILEVEL') return 'DALINAME';
+  if (token === 'DMX' || token === 'SCNDMXLEVEL') return 'DMXNAME';
+  if (token === 'SCNCHANRGBCOLR') return 'CHANRGBCOLRNAME';
+  if (token === 'SCNDMXRGBCOLR') return 'DMXRGBCOLRNAME';
+  if (token === 'SCNCHANRGBPLAY') return 'CHANRGBCOLRNAME';
+  if (token === 'SCNDMXRGBPLAY') return 'DMXRGBCOLRNAME';
+  if (token === 'SCNCHANTWCOLR') return 'CHANTWCOLRNAME';
+  if (token === 'SCNDMXTWCOLR') return 'DMXTWCOLRNAME';
+  return 'CHANNAME';
+}
+
+function channelKey(addr, devcode, chanNum) {
+  return [addr, devcode, chanNum].map(part => String(part == null ? '' : part).trim()).join('|');
+}
+
+function parseInfoLevelsFile(text) {
+  const raw = String(text || '');
+  const headerOk = /^\s*!EDIN LEVELS FILE/im.test(raw);
+  const areas = [];
+  const scenes = {};
+  function sceneOf(num) {
+    const id = normalizeSceneNum(num);
+    if (!id) return null;
+    if (!scenes[id]) scenes[id] = { num: id, name: '', fadeMs: null, items: [] };
+    return scenes[id];
+  }
+  parseInfoCsvRows(raw).forEach(line => {
+    const parts = splitInfoCsvLine(line);
+    const token = String(parts[0] || '').toUpperCase();
+    if (token === 'AREA' && parts.length >= 3) {
+      const num = normalizeSceneNum(parts[1]);
+      const name = parts.slice(2).join(',');
+      if (num && name) areas.push({ num, name });
+    } else if (token === 'SCENE' && parts.length >= 3) {
+      const scene = sceneOf(parts[1]);
+      if (scene) scene.name = parts.slice(2).join(',');
+    } else if (token === 'SCNFADE' && parts.length >= 3) {
+      const scene = sceneOf(parts[1]);
+      if (scene) scene.fadeMs = parseInt(parts[2], 10);
+    } else if (token.indexOf('SCN') === 0 && parts.length >= 6) {
+      const scene = sceneOf(parts[1]);
+      if (!scene) return;
+      scene.items.push({
+        token,
+        type: infoKindToNameType(token),
+        addr: parts[2],
+        devcode: parts[3],
+        chanNum: parts[4],
+        value: parts.slice(5).join(',')
+      });
+    }
+  });
+  return { headerOk, areas, scenes: Object.keys(scenes).map(key => scenes[key]) };
+}
+
+function buildInfoChannelIndex(namesFile) {
+  const byKey = {};
+  (namesFile && namesFile.channels || []).forEach(channel => {
+    byKey[channelKey(channel.addr, channel.devcode, channel.chanNum)] = channel;
+  });
+  return byKey;
+}
+
+function sceneChannelsFromInfo(scene, nameIndex) {
+  const channels = [];
+  const states = [];
+  (scene && scene.items || []).forEach(item => {
+    const named = (nameIndex && nameIndex[channelKey(item.addr, item.devcode, item.chanNum)]) || {};
+    const name = named.name || item.token.replace(/^SCN/, '');
+    const type = item.token.indexOf('RGB') !== -1 || item.token.indexOf('TW') !== -1
+      ? item.type
+      : (named.type || item.type);
+    channels.push({
+      type,
+      addr: item.addr,
+      devcode: item.devcode,
+      chanNum: item.chanNum,
+      name,
+      area: named.area
+    });
+    const value = item.value;
+    const asLevel = parseInt(value, 10);
+    if (item.token.indexOf('RGB') !== -1) {
+      states.push({
+        type: type.replace(/NAME$/, ''),
+        addr: item.addr,
+        devcode: item.devcode,
+        chanNum: item.chanNum,
+        current: value,
+        level: Number.isFinite(asLevel) && value.indexOf('#') === -1 ? asLevel : 255
+      });
+    } else if (item.token.indexOf('TW') !== -1) {
+      states.push({
+        type: type.replace(/NAME$/, ''),
+        addr: item.addr,
+        devcode: item.devcode,
+        chanNum: item.chanNum,
+        current: value
+      });
+    } else {
+      states.push({
+        type: type.replace(/NAME$/, ''),
+        addr: item.addr,
+        devcode: item.devcode,
+        chanNum: item.chanNum,
+        current: Number.isFinite(asLevel) ? asLevel : 0
+      });
+    }
+  });
+  return { channels, states };
+}
+
+function inferSceneArea(scene, nameIndex) {
+  const votes = {};
+  (scene && scene.items || []).forEach(item => {
+    const named = nameIndex && nameIndex[channelKey(item.addr, item.devcode, item.chanNum)];
+    if (!named || !named.area) return;
+    votes[named.area] = (votes[named.area] || 0) + 1;
+  });
+  let best = '';
+  let bestCount = 0;
+  Object.keys(votes).forEach(area => {
+    if (votes[area] > bestCount) {
+      best = area;
+      bestCount = votes[area];
+    }
+  });
+  return best;
+}
+
 function sliderFillPercent(min, max, value) {
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) ? max : 100;
@@ -326,7 +517,13 @@ const gatewayProtocol = {
   sortAreasByOrder,
   hexToRgb,
   rgbToHex,
-  sliderFillPercent
+  sliderFillPercent,
+  parseInfoNamesFile,
+  parseInfoLevelsFile,
+  buildInfoChannelIndex,
+  sceneChannelsFromInfo,
+  inferSceneArea,
+  channelKey
 };
 
 if (typeof module !== 'undefined' && module.exports) {

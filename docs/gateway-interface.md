@@ -345,6 +345,7 @@ Plate palette `0–16`: Black, White, Red, Green, Blue, Orange, Cyan, Magenta, Y
 | Keypad | `$BTNSTATE` |
 | DALI page | Broadcast / BST / fitting identify |
 | Preview `?preview=1` | Demo house; Setup **Test Command** can inject `!SCNSTATE,…` locally |
+| Project catalog | Setup **Load project from gateway** — HTTP GET `/info?what=names` and `what=levels`, then Control/Adjust use that channel list |
 
 Helpers: `parseSceneEvents`, `reduceSceneFeedback`, `parseAreaResponse`, `parseSceneResponse`, `parseChannelNames`, `parseChannelStates`.
 

@@ -72,6 +72,10 @@
 
       <button onclick="saveSettings()">Save Settings</button>
 
+      <h2>Project catalog</h2>
+      <p class="info-text">Load names, channel types, and scene levels in one go via HTTP GET <code>/info?what=names</code> and <code>/info?what=levels</code> (Volume 3). Uses the username/password above as Basic Auth. Works even when Control events use TCP. Then Control can show every scene’s channels without waiting on <code>?SCNCHANNAMES</code>.</p>
+      <button type="button" onclick="refreshInfoCatalog()">Load project from gateway</button>
+
       <h2>Diagnostics</h2>
       <label class="log-toggle" for="showLogBar">
         <input type="checkbox" id="showLogBar">
