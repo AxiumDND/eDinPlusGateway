@@ -72,11 +72,11 @@ window.areaUi = window.areaUi || {
   selectedName: null,
   byArea: {},
   areas: [],
-  view: 'home',
-  scenesByNum: {},
-  expectingSceneArea: null,
-  sceneFeedbackOn: false
+  view: 'home'
 };
+window.areaUi.scenesByNum = window.areaUi.scenesByNum || {};
+window.areaUi.expectingSceneArea = window.areaUi.expectingSceneArea || null;
+window.areaUi.sceneFeedbackOn = !!window.areaUi.sceneFeedbackOn;
 
 function rememberScenes(scenes) {
   (scenes || []).forEach(scene => {
