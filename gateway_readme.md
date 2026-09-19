@@ -487,6 +487,8 @@ All fade times are in milliseconds (ms).
 
 # Volume 3: Developer Features
 
+Formatted tables and the full Volume 3 command set: [docs/gateway-interface.md](docs/gateway-interface.md) (sections 12–19).
+
 This section describes features of the eDIN+ GATEWAY interface that are primarily relevant for software developers. These features may provide access similar to the administrator pages of an eDIN+ system or allow for system extension. Familiarity with Volumes 1 & 2 is assumed.
 
 **Caution:** Developer facilities interact closely with eDIN+ internal workings and can have significant side-effects. Contact Mode Lighting to discuss your application before using these features. Administrative privileges are required for these features.
