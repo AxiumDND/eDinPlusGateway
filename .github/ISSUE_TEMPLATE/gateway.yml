@@ -1,0 +1,27 @@
+name: Gateway command or protocol
+description: A lighting gateway command, parse, or live event looks wrong
+labels: [bug]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: Command or reply
+      description: For example $SCNRECALL or !AREANAME
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - HTTP
+        - TCP port 26
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: What is wrong
+    validations:
+      required: true
