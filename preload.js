@@ -12,7 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onLoadSettings: (callback) => ipcRenderer.on('load-settings', (event, settings) => callback(settings)),
   // New function to open the scene edit window.
   openSceneEdit: (sceneData) => ipcRenderer.send('open-scene-edit', sceneData),
-  getVersion: () => ipcRenderer.invoke('get-version')
+  getVersion: () => ipcRenderer.invoke('get-version'),
+  fetchInfoCatalog: (opts) => ipcRenderer.invoke('fetch-info-catalog', opts),
+  closeTcpSession: () => ipcRenderer.invoke('close-tcp-session')
 });
 
 

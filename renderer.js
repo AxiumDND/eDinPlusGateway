@@ -3,15 +3,23 @@ const {
   pad,
   getChannelCategory,
   getColorType,
+  normalizeSceneNum,
   isOffScene,
   parseAreaResponse,
   parseSceneResponse,
+  parseSceneEvents,
+  reduceSceneFeedback,
   parseChannelNames,
   parseChannelStates,
   sortAreasByOrder,
   hexToRgb,
   rgbToHex,
-  sliderFillPercent
+  sliderFillPercent,
+  parseInfoNamesFile,
+  parseInfoLevelsFile,
+  buildInfoChannelIndex,
+  sceneChannelsFromInfo,
+  inferSceneArea
 } = window.gatewayProtocol;
 
 function getUserPrefix() {
@@ -54,12 +62,306 @@ function decrementFittingId() {
   stepFittingId(-1);
 }
 
+const em = window.emDali || {};
+window.emUi = window.emUi || {
+  fittings: {},
+  selected: null,
+  broadcastOn: false
+};
+
+function emAddr() {
+  return document.getElementById('em-ubc') ? document.getElementById('em-ubc').value : '001';
+}
+
+function emDev() {
+  return document.getElementById('em-devcode') ? document.getElementById('em-devcode').value : '017';
+}
+
+function emSend(command) {
+  if (typeof sendCommand === 'function') sendCommand(command);
+  else if (typeof logMessage === 'function') logMessage(command);
+}
+
+function emTargetId(shortAddr) {
+  return shortAddr == null ? 'BST' : em.formatShortAddr(shortAddr);
+}
+
+function upsertEmFitting(partial) {
+  const shortAddr = partial.shortAddr;
+  if (shortAddr == null) return;
+  const current = window.emUi.fittings[shortAddr] || { shortAddr };
+  window.emUi.fittings[shortAddr] = Object.assign({}, current, partial);
+}
+
+function applyEmDaliLog(message) {
+  if (!em.parseDaliFixLines) return;
+  em.parseDaliFixLines(message).forEach(upsertEmFitting);
+  em.parseXdaliAppLines(message).forEach(reply => {
+    if (reply.shortAddr == null || reply.status === 1) return;
+    if (reply.opcode === em.OPCODE.QUERY_EMERGENCY_STATUS) {
+      upsertEmFitting({ shortAddr: reply.shortAddr, emergency: reply.data });
+    }
+    if (reply.opcode === em.OPCODE.QUERY_FAILURE_STATUS) {
+      upsertEmFitting({ shortAddr: reply.shortAddr, failure: reply.data });
+    }
+  });
+  if (String(message).toUpperCase().includes('!DALIFIX') || String(message).toUpperCase().includes('!XDALIAPP')) {
+    renderEmDali();
+  }
+}
+
+function seedEmDaliPreview() {
+  if (Object.keys(window.emUi.fittings).length) return;
+  [0, 1, 2, 3, 4, 5, 43, 44].forEach((shortAddr, index) => {
+    upsertEmFitting({
+      shortAddr,
+      longAddr: String(8200000 + shortAddr),
+      groups: index < 4 ? [14] : [15],
+      emergency: index === 5 ? (1 << 1) : ((1 << 1) | (1 << 2) | (1 << 3)),
+      failure: index === 5 ? (1 << 2) : 0
+    });
+  });
+}
+
+function renderEmDali() {
+  const grid = document.getElementById('emFittingGrid');
+  if (!grid) return;
+  if (!window.electronAPI || new URLSearchParams(location.search).has('preview')) {
+    seedEmDaliPreview();
+  }
+  const shorts = Object.keys(window.emUi.fittings).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+  grid.innerHTML = '';
+  shorts.forEach(shortAddr => {
+    const fitting = window.emUi.fittings[shortAddr];
+    const outcome = em.fittingOutcome(fitting.emergency, fitting.failure);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'em-fitting-tile' +
+      (outcome.failed ? ' fail' : outcome.allGood ? ' ok' : '') +
+      (window.emUi.selected === shortAddr ? ' selected' : '');
+    const group = (fitting.groups && fitting.groups[0] != null) ? ('G' + fitting.groups[0]) : '—';
+    btn.innerHTML = '<strong>' + shortAddr + '</strong><span>' + (fitting.longAddr || '') + '</span><span>' + group + '</span>';
+    btn.addEventListener('click', () => {
+      window.emUi.selected = shortAddr;
+      const name = document.getElementById('em-fitting-name');
+      if (name) name.value = fitting.name || '';
+      renderEmDali();
+    });
+    grid.appendChild(btn);
+  });
+  renderEmSelected();
+}
+
+function renderEmSelected() {
+  const title = document.getElementById('emSelectedTitle');
+  const meta = document.getElementById('emSelectedMeta');
+  const chip = document.getElementById('emSelectedGroup');
+  const lists = document.getElementById('emStatusLists');
+  if (!title || !lists) return;
+  const fitting = window.emUi.fittings[window.emUi.selected];
+  if (!fitting) {
+    title.textContent = 'No fitting selected';
+    if (meta) meta.textContent = 'Load fittings or tap a tile.';
+    if (chip) chip.hidden = true;
+    lists.innerHTML = '';
+    return;
+  }
+  title.textContent = 'Short address ' + fitting.shortAddr;
+  if (meta) meta.textContent = 'Long address ' + (fitting.longAddr || '—');
+  if (chip) {
+    chip.hidden = !(fitting.groups && fitting.groups.length);
+    chip.textContent = fitting.groups && fitting.groups.length
+      ? 'G' + fitting.groups.join(', G')
+      : '';
+  }
+  const outcome = em.fittingOutcome(fitting.emergency, fitting.failure);
+  const renderList = (heading, table, flags) => {
+    const items = table.map(item => {
+      const on = !!flags[item.key];
+      return '<li class="' + (on ? 'em-status-ok' : 'em-status-no') + '">' + (on ? '✓ ' : '× ') + item.label + '</li>';
+    }).join('');
+    return '<div><h4>' + heading + '</h4><ul>' + items + '</ul></div>';
+  };
+  lists.innerHTML = (outcome.allGood ? '<p class="info-text">All good — function, duration, and battery valid.</p>' : '') +
+    renderList('Emergency status', em.EMERGENCY_STATUS_BITS, outcome.emergency) +
+    renderList('Failure status', em.FAILURE_STATUS_BITS, outcome.failure);
+}
+
+function loadEmDaliFixtures() {
+  emSend('?DALIFIX,' + em.pad(emAddr(), 3) + ',' + em.pad(emDev(), 3) + ';');
+}
+
+function toggleEmBroadcastIdentify() {
+  window.emUi.broadcastOn = !window.emUi.broadcastOn;
+  const btn = document.getElementById('em-broadcast-btn');
+  if (window.emUi.broadcastOn) {
+    emSend(em.xdaliAppCommand('once', emAddr(), emDev(), 'BST', em.OPCODE.START_IDENTIFICATION));
+    if (btn) btn.textContent = 'Stop EM identify broadcast';
+  } else {
+    emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), 'BST', em.OPCODE.REST));
+    if (btn) btn.textContent = 'EM identify broadcast';
+  }
+}
+
+function startEmSelectedAction() {
+  const mode = document.getElementById('em-identify-mode');
+  if (mode && mode.value === 'function') startEmFunctionTest();
+  else {
+    if (window.emUi.selected == null) return;
+    emSend(em.xdaliAppCommand('once', emAddr(), emDev(), emTargetId(window.emUi.selected), em.OPCODE.START_IDENTIFICATION));
+  }
+}
+
+function startEmFunctionTest(daliId) {
+  const id = daliId || (window.emUi.selected == null ? '' : emTargetId(window.emUi.selected));
+  if (!id) return;
+  emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), id, em.OPCODE.START_FUNCTION_TEST));
+}
+
+function startEmDurationTest(daliId) {
+  const id = daliId || (window.emUi.selected == null ? '' : emTargetId(window.emUi.selected));
+  if (!id) return;
+  emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), id, em.OPCODE.START_DURATION_TEST));
+}
+
+function stopEmDaliTests(daliId) {
+  const id = daliId || (window.emUi.selected == null ? '' : emTargetId(window.emUi.selected));
+  if (!id) return;
+  emSend(em.xdaliAppCommand('twice', emAddr(), emDev(), id, em.OPCODE.STOP_TEST));
+}
+
+function refreshEmTestResults() {
+  const ids = window.emUi.selected != null
+    ? [window.emUi.selected]
+    : Object.keys(window.emUi.fittings).map(n => parseInt(n, 10));
+  ids.forEach(shortAddr => {
+    emSend(em.xdaliAppCommand('query', emAddr(), emDev(), em.formatShortAddr(shortAddr), em.OPCODE.QUERY_EMERGENCY_STATUS));
+    emSend(em.xdaliAppCommand('query', emAddr(), emDev(), em.formatShortAddr(shortAddr), em.OPCODE.QUERY_FAILURE_STATUS));
+  });
+}
+
+function assignEmGroup(group) {
+  if (window.emUi.selected == null) return;
+  const name = document.getElementById('em-fitting-name');
+  upsertEmFitting({
+    shortAddr: window.emUi.selected,
+    groups: [group],
+    name: name ? name.value.slice(0, 18) : ''
+  });
+  emSend(em.xdaliAddToGroup(emAddr(), emDev(), window.emUi.selected, group));
+  emSend('$DALIREPAIR,' + em.pad(emAddr(), 3) + ',' + em.pad(emDev(), 3) + ',' +
+    em.formatShortAddr(window.emUi.selected) + ',' + em.formatShortAddr(window.emUi.selected) + ';');
+  renderEmDali();
+}
+
+function startEmGroupTest(group, kind) {
+  const id = 'G' + group;
+  if (kind === 'duration') startEmDurationTest(id);
+  else startEmFunctionTest(id);
+}
+
+function daliLoopAddr() {
+  return document.getElementById('dali-ubc') ? document.getElementById('dali-ubc').value : emAddr();
+}
+
+function toggleDaliBroadcast() {
+  const ubc = document.getElementById('em-ubc');
+  if (ubc) ubc.value = daliLoopAddr();
+  toggleEmBroadcastIdentify();
+  const btn = document.getElementById('dali-broadcast-btn');
+  if (btn) btn.textContent = window.emUi.broadcastOn ? 'Stop EM Identify Broadcast' : 'Start EM Identify Broadcast';
+}
+
+function toggleDaliBST() {
+  if (daliBSTInterval) {
+    clearInterval(daliBSTInterval);
+    daliBSTInterval = null;
+    emSend(em.showDaliOff(daliLoopAddr(), emDev()));
+    const btn = document.getElementById('dali-bst-btn');
+    if (btn) btn.textContent = 'Start DALI BST';
+    return;
+  }
+  const btn = document.getElementById('dali-bst-btn');
+  if (btn) btn.textContent = 'Stop DALI BST';
+  daliBSTState = true;
+  daliBSTInterval = setInterval(() => {
+    emSend(daliBSTState
+      ? '$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,255,0;'
+      : '$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,0,0;');
+    daliBSTState = !daliBSTState;
+  }, 800);
+}
+
+function sendDaliOn() {
+  emSend('$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,255,200;');
+}
+
+function sendDaliOff() {
+  emSend('$DALIFADE,' + em.pad(daliLoopAddr(), 3) + ',' + em.pad(emDev(), 3) + ',BST,0,200;');
+}
+
+function selectedDaliFitting() {
+  const select = document.getElementById('dali-fitting-id');
+  return select ? parseInt(select.value, 10) : 0;
+}
+
+function toggleDaliFittingEMIdentify() {
+  window.emUi.selected = selectedDaliFitting();
+  startEmSelectedAction();
+}
+
+function sendDaliFittingFunctionTest() {
+  window.emUi.selected = selectedDaliFitting();
+  startEmFunctionTest();
+}
+
+function toggleDaliFittingFlash() {
+  const shortAddr = selectedDaliFitting();
+  if (flashDaliFittingInterval) {
+    clearInterval(flashDaliFittingInterval);
+    flashDaliFittingInterval = null;
+    emSend(em.showDaliOff(daliLoopAddr(), emDev()));
+    const btn = document.getElementById('dali-fitting-flash-btn');
+    if (btn) btn.textContent = 'Flash Fitting';
+    return;
+  }
+  const btn = document.getElementById('dali-fitting-flash-btn');
+  if (btn) btn.textContent = 'Stop Flash';
+  flashDaliFittingState = true;
+  flashDaliFittingInterval = setInterval(() => {
+    if (flashDaliFittingState) emSend(em.showDaliFixture(daliLoopAddr(), emDev(), shortAddr));
+    else emSend(em.showDaliOff(daliLoopAddr(), emDev()));
+    flashDaliFittingState = !flashDaliFittingState;
+  }, 700);
+}
+
+window.renderEmDali = renderEmDali;
+window.loadEmDaliFixtures = loadEmDaliFixtures;
+window.toggleEmBroadcastIdentify = toggleEmBroadcastIdentify;
+window.startEmSelectedAction = startEmSelectedAction;
+window.startEmFunctionTest = startEmFunctionTest;
+window.startEmDurationTest = startEmDurationTest;
+window.stopEmDaliTests = stopEmDaliTests;
+window.refreshEmTestResults = refreshEmTestResults;
+window.assignEmGroup = assignEmGroup;
+window.startEmGroupTest = startEmGroupTest;
+window.applyEmDaliLog = applyEmDaliLog;
+window.toggleDaliBroadcast = toggleDaliBroadcast;
+window.toggleDaliBST = toggleDaliBST;
+window.sendDaliOn = sendDaliOn;
+window.sendDaliOff = sendDaliOff;
+window.toggleDaliFittingEMIdentify = toggleDaliFittingEMIdentify;
+window.sendDaliFittingFunctionTest = sendDaliFittingFunctionTest;
+window.toggleDaliFittingFlash = toggleDaliFittingFlash;
+
 // =============================================================================
 // Area Section Functions
 // =============================================================================
 function loadAreaNames() {
   createAreaTiles([]);
   sendCommand('?areanames;');
+  enableSceneFeedback();
+  refreshInfoCatalog();
 }
 
 
@@ -70,6 +372,228 @@ window.areaUi = window.areaUi || {
   areas: [],
   view: 'home'
 };
+window.areaUi.scenesByNum = window.areaUi.scenesByNum || {};
+window.areaUi.expectingSceneArea = window.areaUi.expectingSceneArea || null;
+window.areaUi.sceneFeedbackOn = !!window.areaUi.sceneFeedbackOn;
+window.areaUi.channelsByScene = window.areaUi.channelsByScene || {};
+
+const DEMO_INFO_NAMES = [
+  '!EDIN NAMES FILE',
+  'AREA,1,Kitchen',
+  'AREA,2,Living Room',
+  'CHAN,001,12,001,1,Downlights',
+  'CHAN,001,12,002,1,Pendants',
+  'CHAN,001,17,003,1,Cove TW',
+  'CHAN,001,17,004,1,Feature RGB',
+  'CHAN,002,12,001,2,Wall wash'
+].join('\n');
+
+const DEMO_INFO_LEVELS = [
+  '!EDIN LEVELS FILE',
+  'SCENE,11,Evening',
+  'SCENE,12,Cook',
+  'SCENE,13,Off',
+  'SCENE,21,Evening',
+  'SCENE,22,Day',
+  'SCNFADE,11,1000',
+  'SCNCHANLEVEL,11,001,12,001,200',
+  'SCNCHANLEVEL,11,001,12,002,90',
+  'SCNCHANTWCOLR,11,001,17,003,#2200K',
+  'SCNCHANRGBCOLR,11,001,17,004,#FF8A3D',
+  'SCNCHANLEVEL,12,001,12,001,255',
+  'SCNCHANLEVEL,12,001,12,002,210',
+  'SCNCHANLEVEL,22,002,12,001,230'
+].join('\n');
+
+function rememberScenes(scenes) {
+  (scenes || []).forEach(scene => {
+    const result = reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: {},
+      event: Object.assign({ kind: 'name' }, scene, { num: normalizeSceneNum(scene.num) })
+    });
+    window.areaUi.scenesByNum = result.catalog;
+  });
+}
+
+function applyParsedSceneEvents(events) {
+  (events || []).forEach(ev => {
+    if (ev.kind === 'name' && window.areaUi.expectingSceneArea && !ev.area) {
+      ev = Object.assign({}, ev, { area: normalizeSceneNum(window.areaUi.expectingSceneArea) });
+    }
+    const prevByArea = window.areaUi.byArea;
+    const areaSnapshot = {};
+    Object.keys(prevByArea).forEach(key => {
+      areaSnapshot[key] = Object.assign({}, prevByArea[key]);
+    });
+    const result = reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: areaSnapshot,
+      event: ev
+    });
+    window.areaUi.scenesByNum = result.catalog;
+    result.changedAreas.forEach(areaNum => {
+      const prev = getAreaState(areaNum);
+      const next = result.areas[areaNum];
+      const sceneChanged = normalizeSceneNum(prev.sceneNum) !== normalizeSceneNum(next.sceneNum) || prev.on !== next.on;
+      window.areaUi.byArea[areaNum] = next;
+      refreshAreaTile(areaNum);
+      if (normalizeSceneNum(window.areaUi.selectedNum) !== normalizeSceneNum(areaNum)) return;
+      refreshRoomHeader(areaNum);
+      document.querySelectorAll('.scene-button').forEach(btn => {
+        btn.classList.toggle(
+          'active',
+          next.on && normalizeSceneNum(btn.dataset.sceneNum) === normalizeSceneNum(next.sceneNum)
+        );
+      });
+      if (!sceneChanged) {
+        if (window.viewingScene && normalizeSceneNum(window.viewingScene.num) === ev.num && typeof sendCommand === 'function') {
+          sendCommand(`?SCNCHANSTATES,${ev.num};`);
+        }
+        return;
+      }
+      if (next.on && next.sceneNum) {
+        const scene = result.catalog[normalizeSceneNum(next.sceneNum)] || { num: next.sceneNum, name: next.sceneName };
+        showControlSceneChannels(scene);
+      } else {
+        clearControlSceneChannels();
+      }
+    });
+  });
+}
+
+function applyGatewayLogMessage(message) {
+  const events = parseSceneEvents(message);
+  if (events.length) applyParsedSceneEvents(events);
+  if (typeof applyEmDaliLog === 'function') applyEmDaliLog(message);
+}
+
+function currentConnectionType() {
+  return document.getElementById('connectionType')
+    ? document.getElementById('connectionType').value
+    : (localStorage.getItem('CONNECTION_TYPE') || 'http');
+}
+
+function stopHttpScenePoll() {
+  if (window.areaUi.scenePollTimer) {
+    clearInterval(window.areaUi.scenePollTimer);
+    window.areaUi.scenePollTimer = null;
+  }
+}
+
+function startHttpScenePoll() {
+  stopHttpScenePoll();
+  if (currentConnectionType() === 'tcp') return;
+  window.areaUi.scenePollTimer = setInterval(() => {
+    if (!window.areaUi.sceneFeedbackOn) return;
+    if (typeof sendCommand === 'function') sendCommand('?SCNS;');
+  }, 4000);
+}
+
+function enableSceneFeedback() {
+  const connectionType = currentConnectionType();
+  window.areaUi.sceneFeedbackOn = true;
+  if (typeof sendCommand === 'function') {
+    window.areaUi.expectingSceneArea = null;
+    if (connectionType === 'tcp') {
+      sendCommand('$EVTSCN,1;');
+    }
+    sendCommand('?SCNNAMES;');
+    sendCommand('?SCNS;');
+  }
+  startHttpScenePoll();
+}
+
+function bindConnectionType() {
+  const select = document.getElementById('connectionType');
+  if (!select || select.dataset.boundFeedback === '1') return;
+  select.dataset.boundFeedback = '1';
+  select.addEventListener('change', () => {
+    localStorage.setItem('CONNECTION_TYPE', select.value);
+    if (window.areaUi.sceneFeedbackOn) enableSceneFeedback();
+  });
+}
+
+window.applyGatewayLogMessage = applyGatewayLogMessage;
+window.applyParsedSceneEvents = applyParsedSceneEvents;
+window.rememberScenes = rememberScenes;
+window.enableSceneFeedback = enableSceneFeedback;
+window.applyInfoCatalog = applyInfoCatalog;
+window.refreshInfoCatalog = refreshInfoCatalog;
+window.bindConnectionType = bindConnectionType;
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindConnectionType);
+  } else {
+    bindConnectionType();
+  }
+}
+
+function applyInfoCatalog(namesText, levelsText) {
+  const names = parseInfoNamesFile(namesText || '');
+  const levels = parseInfoLevelsFile(levelsText || '');
+  const nameIndex = buildInfoChannelIndex(names);
+  window.areaUi.infoNames = names;
+  window.areaUi.infoLevels = levels;
+  window.areaUi.infoNameIndex = nameIndex;
+  window.areaUi.channelsByScene = window.areaUi.channelsByScene || {};
+
+  if (names.areas && names.areas.length) {
+    createAreaTiles(names.areas);
+  } else if (levels.areas && levels.areas.length) {
+    createAreaTiles(levels.areas);
+  }
+
+  (levels.scenes || []).forEach(scene => {
+    const area = inferSceneArea(scene, nameIndex);
+    rememberScenes([{ num: scene.num, name: scene.name, area: area || undefined }]);
+    window.areaUi.channelsByScene[normalizeSceneNum(scene.num)] = sceneChannelsFromInfo(scene, nameIndex);
+  });
+
+  if (window.areaUi.view === 'room' && window.areaUi.selectedNum) {
+    const selected = normalizeSceneNum(window.areaUi.selectedNum);
+    const roomScenes = Object.keys(window.areaUi.scenesByNum)
+      .map(key => window.areaUi.scenesByNum[key])
+      .filter(scene => normalizeSceneNum(scene.area) === selected);
+    if (roomScenes.length) createSceneButtons(roomScenes);
+  }
+
+  if (typeof logMessage === 'function') {
+    logMessage(
+      `Project catalog: ${names.areas.length} areas, ${names.channels.length} named channels, ${levels.scenes.length} scenes from /info`,
+      'log-success'
+    );
+  }
+  return { names, levels };
+}
+
+async function refreshInfoCatalog() {
+  const ip = document.getElementById('ipAddress')
+    ? document.getElementById('ipAddress').value
+    : (localStorage.getItem('IP_ADDRESS') || '192.168.1.100');
+  const username = document.getElementById('username')
+    ? document.getElementById('username').value
+    : (localStorage.getItem('USERNAME') || 'Administrator');
+  const password = document.getElementById('password')
+    ? document.getElementById('password').value
+    : (localStorage.getItem('PASSWORD') || 'mode1234');
+
+  if (!window.electronAPI || typeof window.electronAPI.fetchInfoCatalog !== 'function') {
+    applyInfoCatalog(DEMO_INFO_NAMES, DEMO_INFO_LEVELS);
+    return { preview: true };
+  }
+  try {
+    if (typeof logMessage === 'function') logMessage('Loading project from http://' + ip + '/info …');
+    const pack = await window.electronAPI.fetchInfoCatalog({ ip, username, password });
+    return applyInfoCatalog(pack.namesText, pack.levelsText);
+  } catch (err) {
+    if (typeof logMessage === 'function') {
+      logMessage('Info CSV failed: ' + (err && err.message ? err.message : err), 'log-message');
+    }
+    return null;
+  }
+}
 
 function getAreaState(areaNum) {
   if (!window.areaUi.byArea[areaNum]) {
@@ -128,6 +652,7 @@ function selectArea(area) {
     scenePanel.innerHTML = '<div class="area-empty">Loading scenes…</div>';
   }
   if (typeof sendCommand === 'function') {
+    window.areaUi.expectingSceneArea = String(area.num);
     sendCommand(`?SCNNAMES,${areaNumInt};`);
   }
   if (typeof window.createDemoScenes === 'function') {
@@ -995,6 +1520,10 @@ function createSceneButtons(scenes) {
   const areaNum = window.areaUi.selectedNum;
   const areaState = areaNum ? getAreaState(areaNum) : null;
 
+  rememberScenes(scenes.map(scene => Object.assign({}, scene, {
+    area: scene.area || (areaNum ? normalizeSceneNum(areaNum) : undefined)
+  })));
+
   scenes.forEach(scene => {
     const sceneContainer = document.createElement('div');
     sceneContainer.classList.add('scene-item');
@@ -1105,11 +1634,17 @@ function showControlSceneChannels(scene) {
     list.innerHTML = '<div class="area-empty">Loading channels…</div>';
   }
 
+  const cached = window.areaUi.channelsByScene && window.areaUi.channelsByScene[normalizeSceneNum(scene.num)];
+  if (cached && cached.channels && cached.channels.length) {
+    populateChannelList(cached.channels, 'controlChannelList');
+    updateChannelControls(cached.states || []);
+  }
+
   if (typeof sendCommand === 'function') {
     sendCommand(`?SCNCHANNAMES,${scene.num};`);
   }
 
-  if (typeof window.createDemoScenes === 'function') {
+  if (!cached && typeof window.createDemoScenes === 'function') {
     const demo = getDemoSceneChannels(scene);
     populateChannelList(demo.channels, 'controlChannelList');
     updateChannelControls(demo.states);
@@ -1129,6 +1664,12 @@ function openSceneEditModal(scene) {
   document.body.style.overflow = 'hidden'; // Prevent body scrolling when modal is open
   
   window.currentEditingScene = scene;
+
+  const cached = window.areaUi.channelsByScene && window.areaUi.channelsByScene[normalizeSceneNum(scene.num)];
+  if (cached && cached.channels && cached.channels.length) {
+    populateChannelList(cached.channels, 'channelList');
+    updateChannelControls(cached.states || []);
+  }
   
   // 1) Trigger the scene with a fast fade.
   sendCommand(`$SCNRECALLX,${scene.num},255,1000;`);
@@ -1308,6 +1849,9 @@ function saveSettings() {
     IP_ADDRESS: document.getElementById('ipAddress')
       ? document.getElementById('ipAddress').value
       : localStorage.getItem("IP_ADDRESS") || "192.168.1.100",
+    CONNECTION_TYPE: document.getElementById('connectionType')
+      ? document.getElementById('connectionType').value
+      : localStorage.getItem("CONNECTION_TYPE") || "http",
     USERNAME: document.getElementById('username')
       ? document.getElementById('username').value
       : localStorage.getItem("USERNAME") || "Configurator",
@@ -1318,9 +1862,29 @@ function saveSettings() {
   console.log("DEBUG: Saving Settings:", newSettings);
   window.electronAPI.updateSettings(newSettings);
   localStorage.setItem("IP_ADDRESS", newSettings.IP_ADDRESS);
+  localStorage.setItem("CONNECTION_TYPE", newSettings.CONNECTION_TYPE);
   localStorage.setItem("USERNAME", newSettings.USERNAME);
   localStorage.setItem("PASSWORD", newSettings.PASSWORD);
+  enableSceneFeedback();
+  if (newSettings.CONNECTION_TYPE !== 'tcp' && typeof closeTcpSession === 'function') {
+    closeTcpSession();
+  }
 }
+
+async function closeTcpSession() {
+  if (!window.electronAPI || typeof window.electronAPI.closeTcpSession !== 'function') {
+    if (typeof logMessage === 'function') logMessage('Close TCP session is only available in the desktop app.');
+    return;
+  }
+  try {
+    await window.electronAPI.closeTcpSession();
+    if (typeof logMessage === 'function') logMessage('Requested TCP session close.');
+  } catch (err) {
+    if (typeof logMessage === 'function') logMessage('TCP close failed: ' + err.message);
+  }
+}
+
+window.closeTcpSession = closeTcpSession;
 
 function testConnection() {
   const prefix = getUserPrefix();
@@ -1331,14 +1895,24 @@ function testConnection() {
 
 function sendTestCommand() {
   const command = document.getElementById('testCommand').value;
-  if (command) {
-    sendCommand(command);
-  }
+  if (!command) return;
+  if (window.electronAPI) sendCommand(command);
+  else applyGatewayLogMessage(command);
 }
 
 function sendEventReportCommand(state) {
   const command = `$Events,${state};`;
   sendCommand(command);
+  if (state) {
+    sendCommand('$EVTSCN,1;');
+    window.areaUi.sceneFeedbackOn = true;
+    window.areaUi.expectingSceneArea = null;
+    sendCommand('?SCNNAMES;');
+    sendCommand('?SCNS;');
+  } else {
+    sendCommand('$EVTSCN,0;');
+    window.areaUi.sceneFeedbackOn = false;
+  }
   logMessage(`Sent Event Report ${state ? 'ON' : 'OFF'} command: ${command}`);
 }
 
@@ -1464,11 +2038,25 @@ if (window.electronAPI && typeof window.electronAPI.onLogMessage === 'function')
   if (message.includes("!AREANAME,")) {
     const areas = parseAreaResponse(message);
     createAreaTiles(areas);
-  } 
+    if (typeof sendCommand === 'function') {
+      window.areaUi.expectingSceneArea = null;
+      sendCommand('?SCNNAMES;');
+      sendCommand('?SCNS;');
+    }
+  }
   else if (message.includes("!SCNNAME,")) {
     const scenes = parseSceneResponse(message);
-    createSceneButtons(scenes);
+    rememberScenes(scenes);
+    const selected = window.areaUi.selectedNum;
+    const roomScenes = selected
+      ? scenes.filter(s => !s.area || normalizeSceneNum(s.area) === normalizeSceneNum(selected))
+      : scenes;
+    const catalogOnly = window.areaUi.expectingSceneArea == null;
+    if (!catalogOnly && window.areaUi.view === 'room' && roomScenes.length) {
+      createSceneButtons(roomScenes);
+    }
   }
+  applyGatewayLogMessage(message);
   
   // If we got channel name data, build the channel list
   if (message.includes("SCNCHANNAMES") ||
@@ -1528,6 +2116,10 @@ if (window.electronAPI && typeof window.electronAPI.onLoadSettings === 'function
   if (document.getElementById('ipAddress') && settings.IP_ADDRESS) {
     document.getElementById('ipAddress').value = settings.IP_ADDRESS;
   }
+  if (document.getElementById('connectionType') && settings.CONNECTION_TYPE) {
+    document.getElementById('connectionType').value = settings.CONNECTION_TYPE;
+    localStorage.setItem('CONNECTION_TYPE', settings.CONNECTION_TYPE);
+  }
   if (document.getElementById('username') && settings.USERNAME) {
     document.getElementById('username').value = settings.USERNAME;
   }
@@ -1575,7 +2167,7 @@ async function loadAppVersion() {
       if (pkg && pkg.version) return pkg.version;
     }
   } catch (err) { /* fall through */ }
-  return '1.4.2';
+  return '1.5.0';
 }
 
 async function applyAppVersion() {

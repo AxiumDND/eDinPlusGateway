@@ -14,19 +14,73 @@ test('parseAreaResponse keeps named areas and drops blanks', () => {
   ]);
 });
 
-test('parseSceneResponse reads scene number and name', () => {
-  const text = '!SCNNAME,22,0,0,Day;\n!SCNNAME,23,0,0,Off;';
+test('parseSceneResponse reads scene number, area, and name', () => {
+  const text = '!SCNNAME,22,0,2,Day;\n!SCNNAME,23,0,2,Off;';
   assert.deepEqual(protocol.parseSceneResponse(text), [
-    { num: '22', name: 'Day' },
-    { num: '23', name: 'Off' }
+    { num: '22', name: 'Day', area: '2', kind: 'name' },
+    { num: '23', name: 'Off', area: '2', kind: 'name' }
   ]);
 });
 
-test('isOffScene treats Off case-insensitively', () => {
+test('isOffScene treats Off case-insensitively and uses the off-scene flag', () => {
   assert.equal(protocol.isOffScene({ name: 'Off' }), true);
   assert.equal(protocol.isOffScene({ name: '  OFF  ' }), true);
   assert.equal(protocol.isOffScene({ name: 'Evening' }), false);
+  assert.equal(protocol.isOffScene({ name: 'All out', flags: 1 }), true);
   assert.equal(protocol.isOffScene(null), true);
+});
+
+test('parseSceneEvents reads prefixed HTTP/TCP log lines', () => {
+  const events = protocol.parseSceneEvents('TCP Response: !SCNSTATE,00011,1,255,1000;');
+  assert.equal(events.length, 1);
+  assert.equal(events[0].num, '11');
+  assert.equal(events[0].active, true);
+});
+
+test('parseSceneEvents reads SCNSTATE, SCN status, and action events', () => {
+  const text = [
+    '!OK,SCNRECALL,8;',
+    '!SCNSTATE,00008,1,255,00001000;',
+    '!SCN,00009,1,1,1,255;',
+    '!SCNRECALL,00011;',
+    '!SCNOFF,00008;'
+  ].join('\n');
+  const events = protocol.parseSceneEvents(text);
+  assert.deepEqual(events.map(e => e.kind), ['state', 'status', 'action', 'action']);
+  assert.equal(events[0].num, '8');
+  assert.equal(events[0].active, true);
+  assert.equal(events[1].flags, 1);
+  assert.equal(events[2].action, 'RECALL');
+  assert.equal(events[3].action, 'OFF');
+});
+
+test('reduceSceneFeedback maps a live scene onto its area tile state', () => {
+  const catalog = {
+    '11': { num: '11', name: 'Evening', area: '1' },
+    '13': { num: '13', name: 'Off', area: '1' }
+  };
+  const recalled = protocol.reduceSceneFeedback({
+    catalog,
+    areas: { '1': { on: false, sceneNum: null, sceneName: '' } },
+    event: { kind: 'state', num: '11', active: true, level: 255 }
+  });
+  assert.deepEqual(recalled.areas['1'], { on: true, sceneNum: '11', sceneName: 'Evening' });
+
+  const off = protocol.reduceSceneFeedback({
+    catalog: recalled.catalog,
+    areas: recalled.areas,
+    event: { kind: 'action', action: 'OFF', num: '11' }
+  });
+  assert.equal(off.areas['1'].on, false);
+  assert.equal(off.areas['1'].sceneNum, '11');
+
+  const offScene = protocol.reduceSceneFeedback({
+    catalog,
+    areas: {},
+    event: { kind: 'action', action: 'RECALL', num: '13' }
+  });
+  assert.equal(offScene.areas['1'].on, false);
+  assert.equal(offScene.areas['1'].sceneName, '');
 });
 
 test('parseChannelNames supports CHAN, DALI, TW, and RGB types', () => {

@@ -13,6 +13,15 @@ test('command log lives outside the overflow-clipped app-main', () => {
   assert.ok(logIndex > mainClose, 'log bar must be after app-main so overflow:hidden cannot clip it');
 });
 
+test('Setup defaults to HTTP with TCP as fallback copy', () => {
+  assert.match(html, /<option value="http" selected>/);
+  assert.match(html, /HTTP \(default, TCP fallback\)/);
+  assert.match(html, /TCP only \(port 26\)/);
+  assert.match(html, /HTTP is the normal path/);
+  assert.match(html, /4 TCP sessions/);
+  assert.match(html, /closeTcpSession/);
+});
+
 test('Show command log checkbox can reveal the log with CSS alone', () => {
   assert.match(html, /id="showLogBar"/);
   assert.match(css, /body:has\(#showLogBar:checked\)\s+#logBar/);

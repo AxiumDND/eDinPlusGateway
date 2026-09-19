@@ -16,7 +16,7 @@
   <aside class="sidebar" aria-label="Primary">
     <div class="sidebar-brand" title="eDIN+ Gateway">
       <img src="assets/edin-plus-logo.png" alt="eDIN+" class="sidebar-logo">
-      <p class="sidebar-version" data-app-version>v1.4.2</p>
+      <p class="sidebar-version" data-app-version>v1.5.0</p>
     </div>
     <nav class="sidebar-nav">
       <button id="area-btn" onclick="showSection('area')">
@@ -30,6 +30,10 @@
       <button id="dali-btn" onclick="showSection('dali')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7V18h8v-2.3A7 7 0 0 0 12 3zm-3 17h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z" fill="currentColor"/></svg>
         <span>DALI</span>
+      </button>
+      <button id="emdali-btn" onclick="showSection('emdali')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h10v10H7zM9 4h6v3H9zM8 20h8v1H8z" fill="currentColor"/></svg>
+        <span>EM Dali</span>
       </button>
       <button id="keypad-btn" onclick="showSection('keypad')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="1.6"/><circle cx="12" cy="7" r="1.6"/><circle cx="17" cy="7" r="1.6"/><circle cx="7" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="17" cy="12" r="1.6"/><circle cx="7" cy="17" r="1.6"/><circle cx="12" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/></svg>
@@ -49,19 +53,17 @@
     <!-- Setup Section -->
     <div id="setup" class="section">
       <h2>Gateway Setup</h2>
-      <p class="info-text">Important: To monitor live events from plates and contacts in real-time:
-      1. Select "TCP/IP (Port 26)" as your Connection Type below
-      2. Click "Event Report ON" after connecting
-      
-      Note: HTTP mode can only receive responses to commands you send and cannot monitor live events.</p>
+      <p class="info-text">HTTP is the normal path (<code>POST /gateway?</code> and <code>GET /info</code>). TCP port 26 is used automatically if HTTP errors or times out, or if you pick “TCP only”.</p>
+      <p class="info-text">Control scene tiles follow polled <code>?SCNS</code> on HTTP. Live plate events (<code>!SCNSTATE</code>) need a TCP session — choose TCP only and Event Report ON if you need those.</p>
+      <p class="info-text">Each NPU only accepts <strong>4 TCP sessions</strong>. This app keeps at most one, FIN-closes it after a fallback command, when you leave TCP-only, or when the window quits. A session that is not closed cleanly can occupy a slot until the NPU times it out (about an hour), and then new TCP connects are refused.</p>
       
       <label for="ipAddress">Gateway IP:</label>
       <input type="text" id="ipAddress" placeholder="192.168.1.100">
 
       <label for="connectionType">Connection Type:</label>
       <select id="connectionType">
-        <option value="http" selected>HTTP (Default)</option>
-        <option value="tcp">TCP/IP (Port 26)</option>
+        <option value="http" selected>HTTP (default, TCP fallback)</option>
+        <option value="tcp">TCP only (port 26)</option>
       </select>
       
       <label for="username">Username:</label>
@@ -71,6 +73,11 @@
       <input type="password" id="password" placeholder="mode1234">
 
       <button onclick="saveSettings()">Save Settings</button>
+      <button type="button" onclick="closeTcpSession()">Close TCP session</button>
+
+      <h2>Project catalog</h2>
+      <p class="info-text">Load names, channel types, and scene levels in one go via HTTP GET <code>/info?what=names</code> and <code>/info?what=levels</code> (Volume 3). Uses the username/password above as Basic Auth. Works even when Control events use TCP. Then Control can show every scene’s channels without waiting on <code>?SCNCHANNAMES</code>.</p>
+      <button type="button" onclick="refreshInfoCatalog()">Load project from gateway</button>
 
       <h2>Diagnostics</h2>
       <label class="log-toggle" for="showLogBar">
@@ -213,6 +220,91 @@
       </div>
     </div>
 
+    <!-- EM Dali — eTEST app flow + eDIN web commissioning notes -->
+    <div id="emdali" class="section" style="display:none;">
+      <div class="section-heading">
+        <h2>EM Dali</h2>
+        <p class="section-lede">Emergency DALI commissioning and instant tests — same rhythm as the eTEST Lighting app. Scheduled 28-day / yearly tests stay on that tablet.</p>
+      </div>
+
+      <div class="ds-grid">
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>eDIN web first</h3>
+            <span class="ds-chip">Health &amp; Repair</span>
+          </header>
+          <p class="info-text">Do normal project commissioning before EM work. MBus should be healthy. Every UBC must exist in the eDIN+ configuration with the same address you use here.</p>
+          <p class="info-text">On <strong>System Health and Repair → DALI Commissioning</strong>, run an Advanced DALI scan and confirm the fixture count. Use the page’s identify / broadcast to walk the loop (fittings 0–63, groups 0–15). This app then does the eTEST steps: find a fitting, put it on group A or B, run function / duration tests, and read the IEC 62386-202 status bits.</p>
+        </section>
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>UBC / universe</h3>
+            <span class="ds-chip">Max 64</span>
+          </header>
+          <label for="em-ubc">UBC address</label>
+          <input type="text" id="em-ubc" value="001" maxlength="3" size="3">
+          <label for="em-devcode">Device code</label>
+          <input type="text" id="em-devcode" value="017" maxlength="3" size="3">
+          <div class="ds-actions">
+            <button type="button" class="ds-btn" onclick="loadEmDaliFixtures()">Load fittings</button>
+            <button type="button" id="em-broadcast-btn" class="ds-btn" onclick="toggleEmBroadcastIdentify()">EM identify broadcast</button>
+            <button type="button" class="ds-btn" onclick="stopEmDaliTests('BST')">Stop tests</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="em-dali-layout">
+        <section class="ds-card">
+          <header class="ds-card-header">
+            <h3>Fittings</h3>
+            <span class="ds-chip">Select one</span>
+          </header>
+          <p class="info-text">Stand under a fitting. Identify each short address until the one above you flashes (green / red on EM gear). Mark group A or B on the drawing. Use a function test for fittings that will not identify.</p>
+          <div id="emFittingGrid" class="em-fitting-grid"></div>
+        </section>
+        <section class="ds-card em-detail">
+          <header class="ds-card-header">
+            <h3 id="emSelectedTitle">No fitting selected</h3>
+            <span id="emSelectedGroup" class="ds-chip" hidden>Group</span>
+          </header>
+          <p id="emSelectedMeta" class="info-text">Load fittings or tap a tile.</p>
+          <label for="em-identify-mode">Identify action</label>
+          <select id="em-identify-mode">
+            <option value="identify" selected>DALI Emergency Identify</option>
+            <option value="function">Function test</option>
+          </select>
+          <div class="ds-actions">
+            <button type="button" class="ds-btn" onclick="startEmSelectedAction()">Start</button>
+            <button type="button" class="ds-btn" onclick="startEmFunctionTest()">Start Function Test</button>
+            <button type="button" class="ds-btn" onclick="startEmDurationTest()">Start Duration Test</button>
+            <button type="button" class="ds-btn" onclick="stopEmDaliTests()">Stop Test</button>
+            <button type="button" class="ds-btn" onclick="refreshEmTestResults()">Refresh test results</button>
+          </div>
+          <label for="em-fitting-name">Name (optional, 18 characters)</label>
+          <input type="text" id="em-fitting-name" maxlength="18" placeholder="Location">
+          <div class="ds-actions">
+            <button type="button" class="ds-btn ds-btn-on" onclick="assignEmGroup(14)">Group A (14)</button>
+            <button type="button" class="ds-btn ds-btn-off" onclick="assignEmGroup(15)">Group B (15)</button>
+          </div>
+          <div id="emStatusLists" class="em-status-lists"></div>
+        </section>
+      </div>
+
+      <section class="ds-card">
+        <header class="ds-card-header">
+          <h3>Group instant tests</h3>
+          <span class="ds-chip">A / B</span>
+        </header>
+        <p class="info-text">Typical site: two function tests (group 14 and 15, about an hour apart, 28-day rotation) and two duration tests (yearly, at least 48 hours apart, about 3 hours). Use these buttons to kick a group now — do not run function and duration at the same time.</p>
+        <div class="ds-actions">
+          <button type="button" class="ds-btn" onclick="startEmGroupTest(14, 'function')">Function G14</button>
+          <button type="button" class="ds-btn" onclick="startEmGroupTest(15, 'function')">Function G15</button>
+          <button type="button" class="ds-btn" onclick="startEmGroupTest(14, 'duration')">Duration G14</button>
+          <button type="button" class="ds-btn" onclick="startEmGroupTest(15, 'duration')">Duration G15</button>
+        </div>
+      </section>
+    </div>
+
     <!-- Area Section — Design Studio Control: grid, then room -->
     <div id="area" class="section area-section" style="display:none;">
       <div id="controlHome" class="control-home">
@@ -221,7 +313,7 @@
             <h2>Control</h2>
             <p class="control-home-sub">Choose a room</p>
           </div>
-          <p class="app-version" data-app-version>v1.4.2</p>
+          <p class="app-version" data-app-version>v1.5.0</p>
         </header>
         <div id="tileContainer" class="control-grid"></div>
       </div>
@@ -350,6 +442,7 @@
   </div>
 
   <script src="gateway-protocol.js"></script>
+  <script src="em-dali.js"></script>
   <script src="renderer.js"></script>
   <script>
     function showSection(sectionId) {
@@ -364,6 +457,9 @@
         if (window.electronAPI && !new URLSearchParams(location.search).has('preview')) {
           loadAreaNames();
         }
+      }
+      if (sectionId === 'emdali' && typeof renderEmDali === 'function') {
+        renderEmDali();
       }
     }
 
@@ -405,6 +501,16 @@
         getAreaState('2').on = true;
         getAreaState('2').sceneName = 'Day';
         getAreaState('2').sceneNum = '22';
+        if (typeof rememberScenes === 'function') {
+          rememberScenes([
+            { num: '11', name: 'Evening', area: '1' },
+            { num: '12', name: 'Cook', area: '1' },
+            { num: '13', name: 'Off', area: '1' },
+            { num: '21', name: 'Evening', area: '2' },
+            { num: '22', name: 'Day', area: '2' },
+            { num: '23', name: 'Off', area: '2' }
+          ]);
+        }
         createAreaTiles(demoAreas);
         const demoScenes = {
           '1': [{ num: '11', name: 'Evening' }, { num: '12', name: 'Cook' }, { num: '13', name: 'Off' }],

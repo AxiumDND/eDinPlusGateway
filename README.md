@@ -1,6 +1,6 @@
 # eDin+ Gateway Control
 
-A web-based control interface for eDin+ Gateway devices. This application provides a user-friendly interface for configuring and controlling eDin+ Gateway systems, including keypad configuration, channel control, DALI management, and area/scene control.
+A web-based control interface for eDin+ Gateway devices. This application talks HTTP first (`POST /gateway?` and `GET /info`) and falls back to TCP port 26 if HTTP fails. It provides a user-friendly interface for configuring and controlling eDin+ Gateway systems, including keypad configuration, channel control, DALI management, and area/scene control.
 
 ## Features
 
@@ -8,6 +8,7 @@ A web-based control interface for eDin+ Gateway devices. This application provid
 - Keypad Configuration and Control
 - Channel Fade Control
 - DALI Device Management
+- EM Dali commissioning and IEC 62386-202 tests
 - Area and Scene Management
 - Real-time Command Testing
 
@@ -41,6 +42,14 @@ Gateway parsing and Control helpers are covered by Node's built-in test runner:
 ```bash
 npm test
 ```
+
+## Gateway protocol
+
+Working reference for ASCII commands, scene events, and what this app implements:
+
+- [docs/gateway-interface.md](docs/gateway-interface.md)
+- Official PDFs in `GatewayPDFs/`
+- Long command list: `gateway_readme.md`
 
 ## Development
 

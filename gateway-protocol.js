@@ -1,5 +1,5 @@
 // Shared gateway parsing and Control helpers. Safe to load in the browser or Node.
-
+(function (root) {
 function pad(num, size) {
   return num.toString().padStart(size, '0');
 }
@@ -18,13 +18,35 @@ function getColorType(channelType) {
   return 'UNKNOWN';
 }
 
+function normalizeSceneNum(value) {
+  const parsed = parseInt(String(value == null ? '' : value).trim(), 10);
+  return Number.isFinite(parsed) ? String(parsed) : '';
+}
+
 function isOffScene(scene) {
-  return !scene || String(scene.name || '').trim().toLowerCase() === 'off';
+  if (!scene) return true;
+  if ((Number(scene.flags) & 1) === 1) return true;
+  return String(scene.name || '').trim().toLowerCase() === 'off';
+}
+
+const SCENE_ACTION_ON = ['RECALL', 'RECALLX', 'FAST', 'BACKON'];
+const SCENE_ACTION_OFF = ['OFF'];
+const SCENE_EVENT_ACTIONS = [
+  'SCNRECALLX', 'SCNRECALL', 'SCNOFF', 'SCNFAST', 'SCNBACKON',
+  'SCNRAISE', 'SCNLOWER', 'SCNRAMP', 'SCNSTOP',
+  'SCNNUDGEUP', 'SCNNUDGEDN', 'SCNONOFF', 'SCNTOGGLE', 'SCNSAVE'
+];
+
+function extractGatewayLines(responseText) {
+  return String(responseText || '').split(/[\r\n]+/).map(line => {
+    const idx = line.indexOf('!');
+    return idx < 0 ? '' : line.slice(idx).trim();
+  }).filter(Boolean);
 }
 
 function parseAreaResponse(responseText) {
   const areas = [];
-  String(responseText || '').split(/[\r\n]+/).forEach(line => {
+  extractGatewayLines(responseText).forEach(line => {
     line = line.trim();
     if (!line.startsWith('!AREANAME,')) return;
     if (line.endsWith(';')) line = line.slice(0, -1);
@@ -39,17 +61,128 @@ function parseAreaResponse(responseText) {
 
 function parseSceneResponse(responseText) {
   const scenes = [];
-  String(responseText || '').split(/[\r\n]+/).forEach(line => {
+  extractGatewayLines(responseText).forEach(line => {
     line = line.trim();
     if (!line.startsWith('!SCNNAME,')) return;
     if (line.endsWith(';')) line = line.slice(0, -1);
     const parts = line.split(',');
     if (parts.length < 5) return;
-    const scnNum = parts[1].trim();
-    const scnName = parts[4].trim();
-    if (scnName !== '') scenes.push({ num: scnNum, name: scnName });
+    const scnNum = normalizeSceneNum(parts[1]);
+    const area = normalizeSceneNum(parts[3]);
+    const scnName = parts.slice(4).join(',').trim();
+    if (scnName !== '') scenes.push({ num: scnNum, name: scnName, area: area || undefined, kind: 'name' });
   });
   return scenes;
+}
+
+function parseSceneEvents(responseText) {
+  const events = [];
+  extractGatewayLines(responseText).forEach(raw => {
+    let line = raw.trim();
+    if (!line.startsWith('!')) return;
+    if (line.startsWith('!OK,')) return;
+    if (line.endsWith(';')) line = line.slice(0, -1);
+    if (line.startsWith('!SCNNAME,')) {
+      events.push(...parseSceneResponse(line + ';'));
+      return;
+    }
+    if (line.startsWith('!SCNSTATE,')) {
+      const parts = line.split(',');
+      if (parts.length < 4) return;
+      events.push({
+        kind: 'state',
+        num: normalizeSceneNum(parts[1]),
+        active: Number(parts[2]) !== 0,
+        level: parseInt(parts[3], 10),
+        fadeMs: parts[4] != null ? parseInt(parts[4], 10) : 0
+      });
+      return;
+    }
+    if (line.startsWith('!SCN,') && !line.startsWith('!SCNNAME') && !line.startsWith('!SCNSTATE')) {
+      const parts = line.split(',');
+      if (parts.length < 6) return;
+      events.push({
+        kind: 'status',
+        num: normalizeSceneNum(parts[1]),
+        mode: parseInt(parts[2], 10),
+        flags: parseInt(parts[3], 10),
+        active: Number(parts[4]) !== 0,
+        level: parseInt(parts[5], 10)
+      });
+      return;
+    }
+    for (const token of SCENE_EVENT_ACTIONS) {
+      if (line.startsWith('!' + token + ',')) {
+        const parts = line.split(',');
+        events.push({
+          kind: 'action',
+          action: token.replace(/^SCN/, ''),
+          num: normalizeSceneNum(parts[1]),
+          level: parts[2] != null ? parseInt(parts[2], 10) : undefined,
+          fadeMs: parts[3] != null ? parseInt(parts[3], 10) : undefined
+        });
+        return;
+      }
+    }
+  });
+  return events;
+}
+
+function reduceSceneFeedback(input) {
+  const catalog = Object.assign({}, input.catalog || {});
+  const areas = Object.assign({}, input.areas || {});
+  const ev = input.event;
+  if (!ev || !ev.num) return { catalog, areas, changedAreas: [] };
+
+  if (ev.kind === 'name') {
+    const prev = catalog[ev.num] || { num: ev.num };
+    catalog[ev.num] = {
+      num: ev.num,
+      name: ev.name || prev.name || '',
+      area: ev.area || prev.area,
+      flags: ev.flags != null ? ev.flags : prev.flags
+    };
+    return { catalog, areas, changedAreas: [] };
+  }
+
+  const prevScene = catalog[ev.num] || { num: ev.num };
+  const scene = {
+    num: ev.num,
+    name: ev.name || prevScene.name || '',
+    area: ev.area || prevScene.area,
+    flags: ev.flags != null ? ev.flags : prevScene.flags
+  };
+  catalog[ev.num] = scene;
+  const areaNum = scene.area;
+  if (!areaNum) return { catalog, areas, changedAreas: [] };
+
+  const current = Object.assign({ on: false, sceneNum: null, sceneName: '' }, areas[areaNum]);
+  const off = isOffScene(scene);
+  let next = current;
+  let changed = false;
+
+  function setScene(isOn) {
+    next = {
+      on: !!(isOn && !off),
+      sceneNum: scene.num,
+      sceneName: isOn && !off ? (scene.name || '') : ''
+    };
+    changed = true;
+  }
+
+  if (ev.kind === 'state' || ev.kind === 'status') {
+    if (ev.active) setScene(true);
+    else if (normalizeSceneNum(current.sceneNum) === scene.num) {
+      next = { on: false, sceneNum: current.sceneNum, sceneName: current.sceneName };
+      changed = true;
+    }
+  } else if (ev.kind === 'action') {
+    if (SCENE_ACTION_OFF.indexOf(ev.action) !== -1) setScene(false);
+    else if (SCENE_ACTION_ON.indexOf(ev.action) !== -1) setScene(true);
+  }
+
+  if (changed) areas[areaNum] = next;
+  return { catalog, areas, changedAreas: changed ? [areaNum] : [] };
 }
 
 function parseChannelNames(responseText) {
@@ -170,6 +303,197 @@ function rgbToHex(r, g, b) {
   return '#' + componentToHex(r) + componentToHex(g) + componentToHex(b);
 }
 
+function splitInfoCsvLine(line) {
+  return String(line == null ? '' : line).split(',');
+}
+
+function parseInfoCsvRows(text) {
+  return String(text || '').split(/\r\n|\n|\r/).map(line => line.replace(/\s+$/, '')).filter(line => {
+    if (!line) return false;
+    if (line.charAt(0) === '!') return false;
+    return true;
+  });
+}
+
+function parseInfoNamesFile(text) {
+  const raw = String(text || '');
+  const headerOk = /^\s*!EDIN NAMES FILE/im.test(raw);
+  const project = {};
+  const areas = [];
+  const plates = [];
+  const modules = [];
+  const channels = [];
+  parseInfoCsvRows(raw).forEach(line => {
+    const parts = splitInfoCsvLine(line);
+    const token = String(parts[0] || '').toUpperCase();
+    if (token === 'PROJECTNAME') project.name = parts.slice(1).join(',');
+    else if (token === 'PROJECTVERSION') project.version = parts.slice(1).join(',');
+    else if (token === 'PROJECTOWNER') project.owner = parts.slice(1).join(',');
+    else if (token === 'AREA' && parts.length >= 3) {
+      const num = normalizeSceneNum(parts[1]);
+      const name = parts.slice(2).join(',');
+      if (num && name) areas.push({ num, name });
+    } else if (token === 'PLATE' && parts.length >= 5) {
+      plates.push({
+        addr: parts[1],
+        devcode: parts[2],
+        area: normalizeSceneNum(parts[3]),
+        name: parts.slice(4).join(',')
+      });
+    } else if (token === 'MODULE' && parts.length >= 5) {
+      modules.push({
+        addr: parts[1],
+        devcode: parts[2],
+        area: normalizeSceneNum(parts[3]),
+        name: parts.slice(4).join(',')
+      });
+    } else if (['CHAN', 'DALI', 'DMX', 'INPSTATE', 'INPPIR', 'INPLEVEL'].indexOf(token) !== -1 && parts.length >= 6) {
+      channels.push({
+        kind: token,
+        type: infoKindToNameType(token),
+        addr: parts[1],
+        devcode: parts[2],
+        chanNum: parts[3],
+        area: normalizeSceneNum(parts[4]),
+        name: parts.slice(5).join(',')
+      });
+    }
+  });
+  return { headerOk, project, areas, plates, modules, channels };
+}
+
+function infoKindToNameType(kind) {
+  const token = String(kind || '').toUpperCase();
+  if (token === 'DALI' || token === 'SCNDALILEVEL') return 'DALINAME';
+  if (token === 'DMX' || token === 'SCNDMXLEVEL') return 'DMXNAME';
+  if (token === 'SCNCHANRGBCOLR') return 'CHANRGBCOLRNAME';
+  if (token === 'SCNDMXRGBCOLR') return 'DMXRGBCOLRNAME';
+  if (token === 'SCNCHANRGBPLAY') return 'CHANRGBCOLRNAME';
+  if (token === 'SCNDMXRGBPLAY') return 'DMXRGBCOLRNAME';
+  if (token === 'SCNCHANTWCOLR') return 'CHANTWCOLRNAME';
+  if (token === 'SCNDMXTWCOLR') return 'DMXTWCOLRNAME';
+  return 'CHANNAME';
+}
+
+function channelKey(addr, devcode, chanNum) {
+  return [addr, devcode, chanNum].map(part => String(part == null ? '' : part).trim()).join('|');
+}
+
+function parseInfoLevelsFile(text) {
+  const raw = String(text || '');
+  const headerOk = /^\s*!EDIN LEVELS FILE/im.test(raw);
+  const areas = [];
+  const scenes = {};
+  function sceneOf(num) {
+    const id = normalizeSceneNum(num);
+    if (!id) return null;
+    if (!scenes[id]) scenes[id] = { num: id, name: '', fadeMs: null, items: [] };
+    return scenes[id];
+  }
+  parseInfoCsvRows(raw).forEach(line => {
+    const parts = splitInfoCsvLine(line);
+    const token = String(parts[0] || '').toUpperCase();
+    if (token === 'AREA' && parts.length >= 3) {
+      const num = normalizeSceneNum(parts[1]);
+      const name = parts.slice(2).join(',');
+      if (num && name) areas.push({ num, name });
+    } else if (token === 'SCENE' && parts.length >= 3) {
+      const scene = sceneOf(parts[1]);
+      if (scene) scene.name = parts.slice(2).join(',');
+    } else if (token === 'SCNFADE' && parts.length >= 3) {
+      const scene = sceneOf(parts[1]);
+      if (scene) scene.fadeMs = parseInt(parts[2], 10);
+    } else if (token.indexOf('SCN') === 0 && parts.length >= 6) {
+      const scene = sceneOf(parts[1]);
+      if (!scene) return;
+      scene.items.push({
+        token,
+        type: infoKindToNameType(token),
+        addr: parts[2],
+        devcode: parts[3],
+        chanNum: parts[4],
+        value: parts.slice(5).join(',')
+      });
+    }
+  });
+  return { headerOk, areas, scenes: Object.keys(scenes).map(key => scenes[key]) };
+}
+
+function buildInfoChannelIndex(namesFile) {
+  const byKey = {};
+  (namesFile && namesFile.channels || []).forEach(channel => {
+    byKey[channelKey(channel.addr, channel.devcode, channel.chanNum)] = channel;
+  });
+  return byKey;
+}
+
+function sceneChannelsFromInfo(scene, nameIndex) {
+  const channels = [];
+  const states = [];
+  (scene && scene.items || []).forEach(item => {
+    const named = (nameIndex && nameIndex[channelKey(item.addr, item.devcode, item.chanNum)]) || {};
+    const name = named.name || item.token.replace(/^SCN/, '');
+    const type = item.token.indexOf('RGB') !== -1 || item.token.indexOf('TW') !== -1
+      ? item.type
+      : (named.type || item.type);
+    channels.push({
+      type,
+      addr: item.addr,
+      devcode: item.devcode,
+      chanNum: item.chanNum,
+      name,
+      area: named.area
+    });
+    const value = item.value;
+    const asLevel = parseInt(value, 10);
+    if (item.token.indexOf('RGB') !== -1) {
+      states.push({
+        type: type.replace(/NAME$/, ''),
+        addr: item.addr,
+        devcode: item.devcode,
+        chanNum: item.chanNum,
+        current: value,
+        level: Number.isFinite(asLevel) && value.indexOf('#') === -1 ? asLevel : 255
+      });
+    } else if (item.token.indexOf('TW') !== -1) {
+      states.push({
+        type: type.replace(/NAME$/, ''),
+        addr: item.addr,
+        devcode: item.devcode,
+        chanNum: item.chanNum,
+        current: value
+      });
+    } else {
+      states.push({
+        type: type.replace(/NAME$/, ''),
+        addr: item.addr,
+        devcode: item.devcode,
+        chanNum: item.chanNum,
+        current: Number.isFinite(asLevel) ? asLevel : 0
+      });
+    }
+  });
+  return { channels, states };
+}
+
+function inferSceneArea(scene, nameIndex) {
+  const votes = {};
+  (scene && scene.items || []).forEach(item => {
+    const named = nameIndex && nameIndex[channelKey(item.addr, item.devcode, item.chanNum)];
+    if (!named || !named.area) return;
+    votes[named.area] = (votes[named.area] || 0) + 1;
+  });
+  let best = '';
+  let bestCount = 0;
+  Object.keys(votes).forEach(area => {
+    if (votes[area] > bestCount) {
+      best = area;
+      bestCount = votes[area];
+    }
+  });
+  return best;
+}
+
 function sliderFillPercent(min, max, value) {
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) ? max : 100;
@@ -182,20 +506,28 @@ const gatewayProtocol = {
   pad,
   getChannelCategory,
   getColorType,
+  normalizeSceneNum,
   isOffScene,
   parseAreaResponse,
   parseSceneResponse,
+  parseSceneEvents,
+  reduceSceneFeedback,
   parseChannelNames,
   parseChannelStates,
   sortAreasByOrder,
   hexToRgb,
   rgbToHex,
-  sliderFillPercent
+  sliderFillPercent,
+  parseInfoNamesFile,
+  parseInfoLevelsFile,
+  buildInfoChannelIndex,
+  sceneChannelsFromInfo,
+  inferSceneArea,
+  channelKey
 };
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = gatewayProtocol;
 }
-if (typeof window !== 'undefined') {
-  window.gatewayProtocol = gatewayProtocol;
-}
+if (root) root.gatewayProtocol = gatewayProtocol;
+})(typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? globalThis : null);
