@@ -48,6 +48,20 @@ test('README points at the live repo, changelog, and MIT license', () => {
   assert.match(readme, /1\.5\.0/);
 });
 
+test('Dependabot stack is on current majors', () => {
+  assert.equal(pkg.devDependencies.electron, '^44.4.1');
+  assert.equal(pkg.devDependencies['electron-builder'], '^26.15.3');
+  assert.equal(pkg.dependencies, undefined);
+  const release = fs.readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8');
+  const tests = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
+  assert.match(tests, /actions\/checkout@v7/);
+  assert.match(tests, /actions\/setup-node@v7/);
+  assert.match(release, /actions\/checkout@v7/);
+  assert.match(release, /softprops\/action-gh-release@v3/);
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  assert.doesNotMatch(main, /node-fetch/);
+});
+
 test('release workflow publishes SHA256SUMS and the portable exe', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8');
   assert.match(workflow, /tags:\s*\n\s*-\s*'v\*'/);

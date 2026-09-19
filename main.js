@@ -7,7 +7,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
-const fetch = require('node-fetch/lib/index.js');
+const fetch = globalThis.fetch.bind(globalThis);
 const {
   HTTP_TIMEOUT_MS,
   HTTP_RETRY_AFTER_MS,

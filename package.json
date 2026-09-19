@@ -12,11 +12,8 @@
     "changelog": "node scripts/changelog-notes.js"
   },
   "devDependencies": {
-    "electron": "^27.0.0",
-    "electron-builder": "^25.1.8"
-  },
-  "dependencies": {
-    "node-fetch": "^2.6.1"
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.axiumdnd.edingateway",
@@ -26,7 +23,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",
@@ -60,9 +59,7 @@
       "!test/**",
       "!.github/**"
     ],
-    "asarUnpack": [
-      "**/node-fetch/**"
-    ]
+    "asarUnpack": []
   },
   "author": "AxiumDND",
   "license": "MIT"

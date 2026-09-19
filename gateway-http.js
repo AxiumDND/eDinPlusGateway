@@ -23,13 +23,16 @@ function gatewayPostUrl(ip, port) {
 
 function postGatewayCommand(fetchFn, url, command, timeoutMs) {
   const ms = timeoutMs == null ? HTTP_TIMEOUT_MS : timeoutMs;
-  return fetchFn(url, {
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  const timer = controller ? setTimeout(() => controller.abort(), ms) : null;
+  const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: command,
-    timeout: ms
-  }).then(response => {
-    return response.text().then(text => {
+    body: command
+  };
+  if (controller) opts.signal = controller.signal;
+  return fetchFn(url, opts)
+    .then(response => response.text().then(text => {
       if (!response.ok) {
         const err = new Error('HTTP ' + response.status);
         err.status = response.status;
@@ -37,8 +40,10 @@ function postGatewayCommand(fetchFn, url, command, timeoutMs) {
         throw err;
       }
       return text;
+    }))
+    .finally(() => {
+      if (timer) clearTimeout(timer);
     });
-  });
 }
 
 module.exports = {
