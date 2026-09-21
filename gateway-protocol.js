@@ -23,10 +23,31 @@ function normalizeSceneNum(value) {
   return Number.isFinite(parsed) ? String(parsed) : '';
 }
 
+function decodeGatewayText(text) {
+  return String(text == null ? '' : text)
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function sceneNameKey(scene) {
+  return decodeGatewayText(scene && scene.name || '').trim().toLowerCase();
+}
+
+function isFunctionScene(scene) {
+  const name = sceneNameKey(scene);
+  if (!name) return false;
+  return /\b(enable|disable)\s+sensor\b/.test(name) || /\bpir\b/.test(name) || /\bsensor\b/.test(name);
+}
+
 function isOffScene(scene) {
   if (!scene) return true;
-  if ((Number(scene.flags) & 1) === 1) return true;
-  return String(scene.name || '').trim().toLowerCase() === 'off';
+  if (isFunctionScene(scene)) return false;
+  const name = sceneNameKey(scene);
+  if (name === 'off' || name === 'all off' || /(^|\s)off$/.test(name)) return true;
+  return (Number(scene.flags) & 1) === 1;
 }
 
 const SCENE_ACTION_ON = ['RECALL', 'RECALLX', 'FAST', 'BACKON'];
@@ -54,7 +75,7 @@ function parseAreaResponse(responseText) {
     if (parts.length < 5) return;
     const areaNum = parts[1].trim();
     const areaName = parts[4].trim();
-    if (areaName !== '') areas.push({ num: areaNum, name: areaName });
+    if (areaName !== '') areas.push({ num: areaNum, name: decodeGatewayText(areaName) });
   });
   return areas;
 }
@@ -69,7 +90,7 @@ function parseSceneResponse(responseText) {
     if (parts.length < 5) return;
     const scnNum = normalizeSceneNum(parts[1]);
     const area = normalizeSceneNum(parts[3]);
-    const scnName = parts.slice(4).join(',').trim();
+    const scnName = decodeGatewayText(parts.slice(4).join(',').trim());
     if (scnName !== '') scenes.push({ num: scnNum, name: scnName, area: area || undefined, kind: 'name' });
   });
   return scenes;
@@ -170,6 +191,10 @@ function reduceSceneFeedback(input) {
     changed = true;
   }
 
+  if (isFunctionScene(scene) && (ev.kind === 'state' || ev.kind === 'status')) {
+    return { catalog, areas, changedAreas: [] };
+  }
+
   if (ev.kind === 'state' || ev.kind === 'status') {
     if (ev.active) setScene(true);
     else if (normalizeSceneNum(current.sceneNum) === scene.num) {
@@ -183,6 +208,76 @@ function reduceSceneFeedback(input) {
 
   if (changed) areas[areaNum] = next;
   return { catalog, areas, changedAreas: changed ? [areaNum] : [] };
+}
+
+function sceneRowsEqual(a, b) {
+  return !!(a && b
+    && a.on === b.on
+    && normalizeSceneNum(a.sceneNum) === normalizeSceneNum(b.sceneNum)
+    && String(a.sceneName || '') === String(b.sceneName || ''));
+}
+
+function reduceSceneStatusSnapshot(input) {
+  const catalog = Object.assign({}, input.catalog || {});
+  const areas = Object.assign({}, input.areas || {});
+  const hold = input.hold || null;
+  const events = (input.events || []).filter(ev => ev && ev.kind === 'status' && ev.num);
+
+  events.forEach(ev => {
+    const prev = catalog[ev.num] || { num: ev.num };
+    catalog[ev.num] = {
+      num: ev.num,
+      name: ev.name || prev.name || '',
+      area: ev.area || prev.area,
+      flags: ev.flags != null ? ev.flags : prev.flags
+    };
+  });
+
+  const rowsByArea = {};
+  events.forEach(ev => {
+    const scene = catalog[ev.num];
+    const areaNum = scene && scene.area;
+    if (!areaNum) return;
+    if (!rowsByArea[areaNum]) rowsByArea[areaNum] = [];
+    rowsByArea[areaNum].push({ ev: ev, scene: scene });
+  });
+
+  const changedAreas = [];
+  Object.keys(rowsByArea).forEach(areaNum => {
+    const rows = rowsByArea[areaNum];
+    const current = Object.assign({ on: false, sceneNum: null, sceneName: '' }, areas[areaNum]);
+    const holdHere = hold
+      && Date.now() < Number(hold.until || 0)
+      && normalizeSceneNum(hold.areaNum) === normalizeSceneNum(areaNum)
+      ? hold
+      : null;
+    const lighting = rows.filter(row => row.ev.active && !isOffScene(row.scene) && !isFunctionScene(row.scene));
+    const offActive = rows.filter(row => row.ev.active && isOffScene(row.scene));
+    let next = current;
+
+    if (holdHere && holdHere.sceneNum) {
+      const held = catalog[normalizeSceneNum(holdHere.sceneNum)] || { num: holdHere.sceneNum };
+      if (!isOffScene(held)) {
+        next = { on: true, sceneNum: normalizeSceneNum(held.num), sceneName: held.name || current.sceneName || '' };
+      } else {
+        next = { on: false, sceneNum: normalizeSceneNum(held.num), sceneName: '' };
+      }
+    } else if (lighting.length) {
+      const preferred = lighting.find(row => normalizeSceneNum(row.scene.num) === normalizeSceneNum(current.sceneNum))
+        || lighting[lighting.length - 1];
+      next = { on: true, sceneNum: preferred.scene.num, sceneName: preferred.scene.name || '' };
+    } else if (offActive.length) {
+      const offRow = offActive[offActive.length - 1];
+      next = { on: false, sceneNum: offRow.scene.num, sceneName: '' };
+    }
+
+    if (!sceneRowsEqual(current, next)) {
+      areas[areaNum] = next;
+      changedAreas.push(areaNum);
+    }
+  });
+
+  return { catalog, areas, changedAreas };
 }
 
 function parseChannelNames(responseText) {
@@ -507,11 +602,14 @@ const gatewayProtocol = {
   getChannelCategory,
   getColorType,
   normalizeSceneNum,
+  decodeGatewayText,
+  isFunctionScene,
   isOffScene,
   parseAreaResponse,
   parseSceneResponse,
   parseSceneEvents,
   reduceSceneFeedback,
+  reduceSceneStatusSnapshot,
   parseChannelNames,
   parseChannelStates,
   sortAreasByOrder,

@@ -4,11 +4,13 @@ const {
   getChannelCategory,
   getColorType,
   normalizeSceneNum,
+  isFunctionScene,
   isOffScene,
   parseAreaResponse,
   parseSceneResponse,
   parseSceneEvents,
   reduceSceneFeedback,
+  reduceSceneStatusSnapshot,
   parseChannelNames,
   parseChannelStates,
   sortAreasByOrder,
@@ -376,6 +378,46 @@ window.areaUi.scenesByNum = window.areaUi.scenesByNum || {};
 window.areaUi.expectingSceneArea = window.areaUi.expectingSceneArea || null;
 window.areaUi.sceneFeedbackOn = !!window.areaUi.sceneFeedbackOn;
 window.areaUi.channelsByScene = window.areaUi.channelsByScene || {};
+window.areaUi.sceneHold = window.areaUi.sceneHold || null;
+
+function holdSceneSelection(areaNum, sceneNum) {
+  window.areaUi.sceneHold = {
+    areaNum: normalizeSceneNum(areaNum),
+    sceneNum: normalizeSceneNum(sceneNum),
+    until: Date.now() + 10000
+  };
+}
+
+function applyAreaFeedback(result) {
+  window.areaUi.scenesByNum = result.catalog;
+  result.changedAreas.forEach(areaNum => {
+    const prev = getAreaState(areaNum);
+    const next = result.areas[areaNum];
+    const sceneChanged = normalizeSceneNum(prev.sceneNum) !== normalizeSceneNum(next.sceneNum) || prev.on !== next.on;
+    window.areaUi.byArea[areaNum] = next;
+    refreshAreaTile(areaNum);
+    if (normalizeSceneNum(window.areaUi.selectedNum) !== normalizeSceneNum(areaNum)) return;
+    refreshRoomHeader(areaNum);
+    document.querySelectorAll('.scene-button').forEach(btn => {
+      btn.classList.toggle(
+        'active',
+        next.on && normalizeSceneNum(btn.dataset.sceneNum) === normalizeSceneNum(next.sceneNum)
+      );
+    });
+    if (!sceneChanged) {
+      if (window.viewingScene && next.on && normalizeSceneNum(window.viewingScene.num) === normalizeSceneNum(next.sceneNum) && typeof sendCommand === 'function') {
+        sendCommand(`?SCNCHANSTATES,${next.sceneNum};`);
+      }
+      return;
+    }
+    if (next.on && next.sceneNum) {
+      const scene = result.catalog[normalizeSceneNum(next.sceneNum)] || { num: next.sceneNum, name: next.sceneName };
+      showControlSceneChannels(scene);
+    } else {
+      clearControlSceneChannels();
+    }
+  });
+}
 
 const DEMO_INFO_NAMES = [
   '!EDIN NAMES FILE',
@@ -416,49 +458,57 @@ function rememberScenes(scenes) {
   });
 }
 
+function snapshotAreas() {
+  const areaSnapshot = {};
+  Object.keys(window.areaUi.byArea || {}).forEach(key => {
+    areaSnapshot[key] = Object.assign({}, window.areaUi.byArea[key]);
+  });
+  return areaSnapshot;
+}
+
 function applyParsedSceneEvents(events) {
+  const names = [];
+  const statuses = [];
+  const others = [];
   (events || []).forEach(ev => {
-    if (ev.kind === 'name' && window.areaUi.expectingSceneArea && !ev.area) {
-      ev = Object.assign({}, ev, { area: normalizeSceneNum(window.areaUi.expectingSceneArea) });
+    if (!ev) return;
+    if (ev.kind === 'name') {
+      if (window.areaUi.expectingSceneArea && !ev.area) {
+        ev = Object.assign({}, ev, { area: normalizeSceneNum(window.areaUi.expectingSceneArea) });
+      }
+      names.push(ev);
+      return;
     }
-    const prevByArea = window.areaUi.byArea;
-    const areaSnapshot = {};
-    Object.keys(prevByArea).forEach(key => {
-      areaSnapshot[key] = Object.assign({}, prevByArea[key]);
-    });
-    const result = reduceSceneFeedback({
+    if (ev.kind === 'status') {
+      statuses.push(ev);
+      return;
+    }
+    others.push(ev);
+  });
+
+  names.forEach(ev => {
+    applyAreaFeedback(reduceSceneFeedback({
       catalog: window.areaUi.scenesByNum,
-      areas: areaSnapshot,
+      areas: snapshotAreas(),
       event: ev
-    });
-    window.areaUi.scenesByNum = result.catalog;
-    result.changedAreas.forEach(areaNum => {
-      const prev = getAreaState(areaNum);
-      const next = result.areas[areaNum];
-      const sceneChanged = normalizeSceneNum(prev.sceneNum) !== normalizeSceneNum(next.sceneNum) || prev.on !== next.on;
-      window.areaUi.byArea[areaNum] = next;
-      refreshAreaTile(areaNum);
-      if (normalizeSceneNum(window.areaUi.selectedNum) !== normalizeSceneNum(areaNum)) return;
-      refreshRoomHeader(areaNum);
-      document.querySelectorAll('.scene-button').forEach(btn => {
-        btn.classList.toggle(
-          'active',
-          next.on && normalizeSceneNum(btn.dataset.sceneNum) === normalizeSceneNum(next.sceneNum)
-        );
-      });
-      if (!sceneChanged) {
-        if (window.viewingScene && normalizeSceneNum(window.viewingScene.num) === ev.num && typeof sendCommand === 'function') {
-          sendCommand(`?SCNCHANSTATES,${ev.num};`);
-        }
-        return;
-      }
-      if (next.on && next.sceneNum) {
-        const scene = result.catalog[normalizeSceneNum(next.sceneNum)] || { num: next.sceneNum, name: next.sceneName };
-        showControlSceneChannels(scene);
-      } else {
-        clearControlSceneChannels();
-      }
-    });
+    }));
+  });
+
+  if (statuses.length) {
+    applyAreaFeedback(reduceSceneStatusSnapshot({
+      catalog: window.areaUi.scenesByNum,
+      areas: snapshotAreas(),
+      events: statuses,
+      hold: window.areaUi.sceneHold
+    }));
+  }
+
+  others.forEach(ev => {
+    applyAreaFeedback(reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: snapshotAreas(),
+      event: ev
+    }));
   });
 }
 
@@ -481,12 +531,20 @@ function stopHttpScenePoll() {
   }
 }
 
+function sceneStatusQuery() {
+  const selected = window.areaUi.selectedNum;
+  if (window.areaUi.view === 'room' && selected) {
+    return `?SCNS,${parseInt(selected, 10)};`;
+  }
+  return '?SCNS;';
+}
+
 function startHttpScenePoll() {
   stopHttpScenePoll();
   if (currentConnectionType() === 'tcp') return;
   window.areaUi.scenePollTimer = setInterval(() => {
     if (!window.areaUi.sceneFeedbackOn) return;
-    if (typeof sendCommand === 'function') sendCommand('?SCNS;');
+    if (typeof sendCommand === 'function') sendCommand(sceneStatusQuery());
   }, 4000);
 }
 
@@ -666,12 +724,12 @@ function toggleAreaPower(area, event) {
   const sceneNum = state.sceneNum;
   if (state.on) {
     state.on = false;
-    if (sceneNum && typeof sendCommand === 'function') {
+    if (sceneNum && typeof sendCommand === 'function' && !isFunctionScene(window.areaUi.scenesByNum[normalizeSceneNum(sceneNum)])) {
       sendCommand(`$SCNOFF,${sceneNum};`);
     }
   } else {
     state.on = true;
-    if (sceneNum && typeof sendCommand === 'function') {
+    if (sceneNum && typeof sendCommand === 'function' && !isFunctionScene(window.areaUi.scenesByNum[normalizeSceneNum(sceneNum)])) {
       sendCommand(`$SCNRECALL,${sceneNum};`);
     }
   }
@@ -1537,23 +1595,26 @@ function createSceneButtons(scenes) {
     }
     sceneBtn.addEventListener('click', () => {
       console.log('Scene button clicked:', scene.name, 'with scene number:', scene.num);
-      const isOff = isOffScene(scene);
+      const isFunction = isFunctionScene(scene);
+      const isOff = !isFunction && isOffScene(scene);
+      if (typeof sendCommand === 'function') {
+        sendCommand(isOff ? `$SCNOFF,${scene.num};` : `$SCNRECALL,${scene.num};`);
+      }
+      if (areaNum && isFunction) {
+        holdSceneSelection(areaNum, getAreaState(areaNum).sceneNum);
+        return;
+      }
       if (areaNum) {
         const state = getAreaState(areaNum);
         state.sceneNum = scene.num;
         if (isOff) {
           state.on = false;
           state.sceneName = '';
-          if (typeof sendCommand === 'function') {
-            sendCommand(`$SCNOFF,${scene.num};`);
-          }
         } else {
           state.on = true;
           state.sceneName = scene.name;
-          if (typeof sendCommand === 'function') {
-            sendCommand(`$SCNRECALL,${scene.num};`);
-          }
         }
+        holdSceneSelection(areaNum, scene.num);
         refreshAreaTile(areaNum);
         refreshRoomHeader(areaNum);
       }
@@ -1620,8 +1681,8 @@ function clearControlSceneChannels() {
 
 function showControlSceneChannels(scene) {
   const isOff = isOffScene(scene);
-  if (isOff) {
-    clearControlSceneChannels();
+  if (isOff || isFunctionScene(scene)) {
+    if (isOff) clearControlSceneChannels();
     return;
   }
 

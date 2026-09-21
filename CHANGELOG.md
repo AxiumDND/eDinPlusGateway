@@ -5,6 +5,11 @@ The version in `package.json` is the source of truth. GitHub Releases are create
 
 ## [Unreleased]
 
+### Fixed
+- Kitchen `?SCNS` polls no longer treat an active **Disable Sensor** / PIR scene as Off and wipe the room
+- Sensor and PIR scenes send `$SCNRECALL` instead of `$SCNOFF`
+- Scene names decode `&amp;` so captions match the plates
+
 ## [1.5.1] - 2026-09-19
 
 ### Changed

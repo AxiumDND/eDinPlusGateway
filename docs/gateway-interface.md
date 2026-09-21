@@ -259,9 +259,13 @@ The **area number on `!SCNNAME`** is how a scene id is mapped onto a Control til
 | `mode` | `1` scene-monitor (default), `2` channel-monitor |
 | `flags` | bit `1` = is-an-off-scene, bit `2` = strict overlap rule |
 
-**Off scenes** (name “Off”, or flags bit 1): recalling them **turns channels off** while the scene itself is marked active. `$SCNOFF` on a normal scene deactivates it. Toggle commands follow **scene state**, not channel brightness.
+**Off scenes** (name “Off” / “ALL OFF” / `… Off`, or flags bit 1): recalling them **turns channels off** while the scene itself is marked active. `$SCNOFF` on a normal scene deactivates it. Toggle commands follow **scene state**, not channel brightness.
 
-Overlapping scenes can stay “active” together depending on mode/strict. Trust `!SCNSTATE` from the NPU rather than guessing.
+**Function scenes** (Enable/Disable Sensor, PIR): often share an area and stay `scn-state=1` next to a lighting scene. They are not Off. Control recalls them with `$SCNRECALL` and `reduceSceneStatusSnapshot` keeps the lighting scene selected.
+
+Overlapping scenes can stay “active” together depending on mode/strict. Trust a whole `?SCNS` snapshot, not the last `!SCN` row.
+
+HTTP Control holds the user’s last lighting recall for a few seconds so a poll cannot snap the tile off while fade/sensor rows still report active.
 
 ### Live scene events (`EVTSCN`)
 
@@ -485,7 +489,7 @@ Plate palette `0–16`: Black, White, Red, Green, Blue, Orange, Cyan, Magenta, Y
 | Preview `?preview=1` | Demo house; Setup **Test Command** can inject `!SCNSTATE,…` locally |
 | Project catalog | Setup **Load project from gateway** — HTTP GET `/info?what=names` and `what=levels`, then Control/Adjust use that channel list |
 
-Helpers: `parseSceneEvents`, `reduceSceneFeedback`, `parseAreaResponse`, `parseSceneResponse`, `parseChannelNames`, `parseChannelStates`.
+Helpers: `parseSceneEvents`, `reduceSceneFeedback`, `reduceSceneStatusSnapshot`, `isFunctionScene`, `isOffScene`, `decodeGatewayText`, `parseAreaResponse`, `parseSceneResponse`, `parseChannelNames`, `parseChannelStates`.
 
 ---
 

@@ -6,7 +6,7 @@ Electron desktop app for an eDIN+ / Mode lighting NPU. **HTTP is the main path**
 
 ## Features
 
-- **Control** — rooms, scenes, live `?SCNS` / `!SCNSTATE` feedback
+- **Control** — rooms, scenes, live `?SCNS` / `!SCNSTATE` feedback (sensor / PIR rows do not clear the lighting scene)
 - **Adjust** — channel sliders, Flash, nudge
 - **DALI** — loop identify / BST
 - **EM Dali** — eTEST-style emergency commissioning and IEC 62386-202 tests
