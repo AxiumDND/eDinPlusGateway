@@ -338,6 +338,28 @@ body:has(#showLogBar:checked) main {
   background-color: rgba(33, 150, 243, 0.1);
 }
 
+.log-debug {
+  color: #f0c14b;
+  padding: 1px 5px;
+  margin: 1px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.log-copy-btn {
+  float: right;
+  margin: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  background: #2a303c;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 #setup,
 #channel,
 #keypad {

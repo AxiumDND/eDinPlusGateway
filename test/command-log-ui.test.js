@@ -28,3 +28,10 @@ test('Show command log checkbox can reveal the log with CSS alone', () => {
   assert.match(css, /position:\s*fixed/);
   assert.doesNotMatch(css, /#logBar:not\(\[hidden\]\)/);
 });
+
+test('Setup has a verbose diagnostics checkbox and copy-log control', () => {
+  assert.match(html, /id="debugLogBar"/);
+  assert.match(html, /Verbose diagnostics/);
+  assert.match(html, /copyCommandLog\(\)/);
+  assert.match(css, /\.log-debug/);
+});

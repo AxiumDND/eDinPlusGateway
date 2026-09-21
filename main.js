@@ -192,6 +192,9 @@ function sendViaTcp(event, commandObj, reason) {
   if (reason) {
     event.reply('log-message', reason);
   }
+  if (commandObj && commandObj.debug) {
+    event.reply('log-message', `DEBUG TCP ${commandObj.ip}:${port} bytes=${String(commandObj.type || '').length}${reason ? ' after=' + reason : ''}`);
+  }
   if (shouldPersistTcp(commandObj.connection)) {
     sendTCPCommand(commandObj.ip, port, commandObj.type, event, (err, response) => {
       if (err) {
@@ -210,15 +213,25 @@ function sendViaTcp(event, commandObj, reason) {
 function sendViaHttpThenTcp(event, commandObj) {
   const url = commandObj.url || gatewayPostUrl(commandObj.ip, commandObj.port || 80);
   event.reply('log-message', "HTTP Sent: " + commandObj.type);
+  const started = Date.now();
+  if (commandObj.debug) {
+    event.reply('log-message', `DEBUG HTTP POST ${url} bytes=${String(commandObj.type || '').length}`);
+  }
   sendHTTPCommand(url, commandObj.type)
     .then(responseText => {
       httpUnavailableUntil = 0;
       console.log("DEBUG: HTTP command response:", responseText);
       event.reply('log-message', `HTTP Response: ${responseText}`);
+      if (commandObj.debug) {
+        event.reply('log-message', `DEBUG HTTP ok ${Date.now() - started}ms chars=${String(responseText || '').length}`);
+      }
     })
     .catch(error => {
       console.error("DEBUG: HTTP command error:", error);
       event.reply('log-message', `HTTP Error: ${error.message}`);
+      if (commandObj.debug) {
+        event.reply('log-message', `DEBUG HTTP fail ${Date.now() - started}ms ${error && error.message ? error.message : error}`);
+      }
       httpUnavailableUntil = nextHttpUnavailableUntil(Date.now(), HTTP_RETRY_AFTER_MS);
       sendViaTcp(event, commandObj, `HTTP failed — falling back to TCP port ${TCP_FALLBACK_PORT}`);
     });

@@ -27,7 +27,24 @@ test('isOffScene treats Off case-insensitively and uses the off-scene flag', () 
   assert.equal(protocol.isOffScene({ name: '  OFF  ' }), true);
   assert.equal(protocol.isOffScene({ name: 'Evening' }), false);
   assert.equal(protocol.isOffScene({ name: 'All out', flags: 1 }), true);
+  assert.equal(protocol.isOffScene({ name: 'ALL OFF' }), true);
+  assert.equal(protocol.isOffScene({ name: 'Colour off' }), true);
   assert.equal(protocol.isOffScene(null), true);
+});
+
+test('sensor and PIR scenes are functions, not Off', () => {
+  assert.equal(protocol.isFunctionScene({ name: 'Disable Sensor', flags: 3 }), true);
+  assert.equal(protocol.isFunctionScene({ name: 'Enable Sensor', flags: 2 }), true);
+  assert.equal(protocol.isFunctionScene({ name: 'PIR Off', flags: 3 }), true);
+  assert.equal(protocol.isOffScene({ name: 'Disable Sensor', flags: 3 }), false);
+  assert.equal(protocol.isOffScene({ name: 'PIR Off', flags: 3 }), false);
+  assert.equal(protocol.isOffScene({ name: '1 Main spots & Kitchen', flags: 2 }), false);
+});
+
+test('parseSceneResponse decodes HTML entities in scene names', () => {
+  const scenes = protocol.parseSceneResponse('!SCNNAME,00135,07,00001,2 Island spot &amp; Z2 White;');
+  assert.equal(scenes[0].name, '2 Island spot & Z2 White');
+  assert.equal(protocol.decodeGatewayText('1 Main spots &amp; Kitchen'), '1 Main spots & Kitchen');
 });
 
 test('parseSceneEvents reads prefixed HTTP/TCP log lines', () => {
@@ -81,6 +98,85 @@ test('reduceSceneFeedback maps a live scene onto its area tile state', () => {
   });
   assert.equal(offScene.areas['1'].on, false);
   assert.equal(offScene.areas['1'].sceneName, '');
+});
+
+const KITCHEN_CATALOG = {
+  '130': { num: '130', name: '1 Main spots & Kitchen', area: '1', flags: 2 },
+  '97': { num: '97', name: 'Kitchen Red', area: '1', flags: 2 },
+  '81': { num: '81', name: 'Disable Sensor', area: '1', flags: 3 },
+  '80': { num: '80', name: 'Enable Sensor', area: '1', flags: 2 },
+  '131': { num: '131', name: 'ALL OFF', area: '1', flags: 3 }
+};
+
+const KITCHEN_SCNS = [
+  '!SCN,00130,01,02,1,255;',
+  '!SCN,00097,01,02,0,000;',
+  '!SCN,00081,01,03,1,255;',
+  '!SCN,00080,01,02,0,000;',
+  '!SCN,00131,01,03,0,000;'
+].join('\n');
+
+test('a live Disable Sensor row does not switch Kitchen off after lighting recall', () => {
+  const afterLights = protocol.reduceSceneFeedback({
+    catalog: KITCHEN_CATALOG,
+    areas: { '1': { on: true, sceneNum: '130', sceneName: '1 Main spots & Kitchen' } },
+    event: { kind: 'status', num: '81', flags: 3, active: true, level: 255 }
+  });
+  assert.equal(afterLights.areas['1'].on, true);
+  assert.equal(afterLights.areas['1'].sceneNum, '130');
+});
+
+test('Kitchen ?SCNS snapshot keeps lighting when Disable Sensor is also active', () => {
+  const snapshot = protocol.reduceSceneStatusSnapshot({
+    catalog: KITCHEN_CATALOG,
+    areas: { '1': { on: true, sceneNum: '130', sceneName: '1 Main spots & Kitchen' } },
+    events: protocol.parseSceneEvents(KITCHEN_SCNS)
+  });
+  assert.equal(snapshot.areas['1'].on, true);
+  assert.equal(snapshot.areas['1'].sceneNum, '130');
+  assert.equal(snapshot.areas['1'].sceneName, '1 Main spots & Kitchen');
+});
+
+test('Kitchen ?SCNS snapshot still reports Off when ALL OFF is the active lighting row', () => {
+  const text = [
+    '!SCN,00130,01,02,0,000;',
+    '!SCN,00081,01,03,1,255;',
+    '!SCN,00131,01,03,1,255;'
+  ].join('\n');
+  const snapshot = protocol.reduceSceneStatusSnapshot({
+    catalog: KITCHEN_CATALOG,
+    areas: { '1': { on: true, sceneNum: '130', sceneName: '1 Main spots & Kitchen' } },
+    events: protocol.parseSceneEvents(text)
+  });
+  assert.equal(snapshot.areas['1'].on, false);
+  assert.equal(snapshot.areas['1'].sceneNum, '131');
+});
+
+test('formatSceneDebugReport classifies Kitchen lighting vs Disable Sensor', () => {
+  const report = protocol.formatSceneDebugReport({
+    catalog: KITCHEN_CATALOG,
+    events: protocol.parseSceneEvents(KITCHEN_SCNS),
+    areas: { '1': { on: true, sceneNum: '130', sceneName: '1 Main spots & Kitchen' } },
+    hold: { areaNum: '1', sceneNum: '97', until: 20_000 },
+    now: 10_000
+  }).join('\n');
+  assert.match(report, /role=function/);
+  assert.match(report, /#81 "Disable Sensor"/);
+  assert.match(report, /#130 "1 Main spots & Kitchen"/);
+  assert.match(report, /lighting=\[130\]/);
+  assert.match(report, /function=\[81\]/);
+  assert.match(report, /hold area=1 scene=97 live=true remainMs=10000/);
+});
+
+test('scene hold keeps the recalled Kitchen scene while ?SCNS still lists another lighting row', () => {
+  const snapshot = protocol.reduceSceneStatusSnapshot({
+    catalog: KITCHEN_CATALOG,
+    areas: { '1': { on: true, sceneNum: '97', sceneName: 'Kitchen Red' } },
+    events: protocol.parseSceneEvents(KITCHEN_SCNS),
+    hold: { areaNum: '1', sceneNum: '97', until: Date.now() + 10000 }
+  });
+  assert.equal(snapshot.areas['1'].on, true);
+  assert.equal(snapshot.areas['1'].sceneNum, '97');
 });
 
 test('parseChannelNames supports CHAN, DALI, TW, and RGB types', () => {

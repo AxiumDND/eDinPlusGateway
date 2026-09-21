@@ -4,11 +4,15 @@ const {
   getChannelCategory,
   getColorType,
   normalizeSceneNum,
+  isFunctionScene,
   isOffScene,
+  classifySceneRole,
+  formatSceneDebugReport,
   parseAreaResponse,
   parseSceneResponse,
   parseSceneEvents,
   reduceSceneFeedback,
+  reduceSceneStatusSnapshot,
   parseChannelNames,
   parseChannelStates,
   sortAreasByOrder,
@@ -376,6 +380,86 @@ window.areaUi.scenesByNum = window.areaUi.scenesByNum || {};
 window.areaUi.expectingSceneArea = window.areaUi.expectingSceneArea || null;
 window.areaUi.sceneFeedbackOn = !!window.areaUi.sceneFeedbackOn;
 window.areaUi.channelsByScene = window.areaUi.channelsByScene || {};
+window.areaUi.sceneHold = window.areaUi.sceneHold || null;
+
+const DEBUG_LOG_KEY = 'DEBUG_LOG';
+
+function isDebugLogEnabled() {
+  try {
+    const box = document.getElementById('debugLogBar');
+    if (box) return !!box.checked;
+    return localStorage.getItem(DEBUG_LOG_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function setDebugLogEnabled(on) {
+  const enabled = !!on;
+  try {
+    localStorage.setItem(DEBUG_LOG_KEY, enabled ? '1' : '0');
+  } catch (err) { /* ignore */ }
+  const box = document.getElementById('debugLogBar');
+  if (box && box.checked !== enabled) box.checked = enabled;
+  if (enabled && typeof setLogBarVisible === 'function') setLogBarVisible(true);
+  if (typeof logMessage === 'function') {
+    logMessage(
+      enabled
+        ? 'Verbose diagnostics ON — scene classify, poll, hold, and area changes will appear as DEBUG lines.'
+        : 'Verbose diagnostics OFF.',
+      enabled ? 'log-debug' : 'log-message'
+    );
+  }
+}
+
+function debugLog(message) {
+  if (!isDebugLogEnabled() || typeof logMessage !== 'function') return;
+  const text = String(message == null ? '' : message);
+  logMessage(text.indexOf('DEBUG') === 0 ? text : 'DEBUG ' + text, 'log-debug');
+}
+
+function holdSceneSelection(areaNum, sceneNum) {
+  window.areaUi.sceneHold = {
+    areaNum: normalizeSceneNum(areaNum),
+    sceneNum: normalizeSceneNum(sceneNum),
+    until: Date.now() + 10000
+  };
+  debugLog(`hold area=${normalizeSceneNum(areaNum)} scene=${normalizeSceneNum(sceneNum)} for 10000ms`);
+}
+
+function applyAreaFeedback(result) {
+  window.areaUi.scenesByNum = result.catalog;
+  result.changedAreas.forEach(areaNum => {
+    const prev = getAreaState(areaNum);
+    const next = result.areas[areaNum];
+    const sceneChanged = normalizeSceneNum(prev.sceneNum) !== normalizeSceneNum(next.sceneNum) || prev.on !== next.on;
+    if (sceneChanged) {
+      debugLog(`area ${areaNum} ${prev.on ? 'on' : 'off'}/${prev.sceneNum || '-'} "${prev.sceneName || ''}" -> ${next.on ? 'on' : 'off'}/${next.sceneNum || '-'} "${next.sceneName || ''}"`);
+    }
+    window.areaUi.byArea[areaNum] = next;
+    refreshAreaTile(areaNum);
+    if (normalizeSceneNum(window.areaUi.selectedNum) !== normalizeSceneNum(areaNum)) return;
+    refreshRoomHeader(areaNum);
+    document.querySelectorAll('.scene-button').forEach(btn => {
+      btn.classList.toggle(
+        'active',
+        next.on && normalizeSceneNum(btn.dataset.sceneNum) === normalizeSceneNum(next.sceneNum)
+      );
+    });
+    if (!sceneChanged) {
+      if (window.viewingScene && next.on && normalizeSceneNum(window.viewingScene.num) === normalizeSceneNum(next.sceneNum) && typeof sendCommand === 'function') {
+        sendCommand(`?SCNCHANSTATES,${next.sceneNum};`);
+      }
+      return;
+    }
+    if (next.on && next.sceneNum) {
+      const scene = result.catalog[normalizeSceneNum(next.sceneNum)] || { num: next.sceneNum, name: next.sceneName };
+      showControlSceneChannels(scene);
+    } else {
+      clearControlSceneChannels();
+    }
+  });
+}
 
 const DEMO_INFO_NAMES = [
   '!EDIN NAMES FILE',
@@ -416,50 +500,67 @@ function rememberScenes(scenes) {
   });
 }
 
-function applyParsedSceneEvents(events) {
-  (events || []).forEach(ev => {
-    if (ev.kind === 'name' && window.areaUi.expectingSceneArea && !ev.area) {
-      ev = Object.assign({}, ev, { area: normalizeSceneNum(window.areaUi.expectingSceneArea) });
-    }
-    const prevByArea = window.areaUi.byArea;
-    const areaSnapshot = {};
-    Object.keys(prevByArea).forEach(key => {
-      areaSnapshot[key] = Object.assign({}, prevByArea[key]);
-    });
-    const result = reduceSceneFeedback({
-      catalog: window.areaUi.scenesByNum,
-      areas: areaSnapshot,
-      event: ev
-    });
-    window.areaUi.scenesByNum = result.catalog;
-    result.changedAreas.forEach(areaNum => {
-      const prev = getAreaState(areaNum);
-      const next = result.areas[areaNum];
-      const sceneChanged = normalizeSceneNum(prev.sceneNum) !== normalizeSceneNum(next.sceneNum) || prev.on !== next.on;
-      window.areaUi.byArea[areaNum] = next;
-      refreshAreaTile(areaNum);
-      if (normalizeSceneNum(window.areaUi.selectedNum) !== normalizeSceneNum(areaNum)) return;
-      refreshRoomHeader(areaNum);
-      document.querySelectorAll('.scene-button').forEach(btn => {
-        btn.classList.toggle(
-          'active',
-          next.on && normalizeSceneNum(btn.dataset.sceneNum) === normalizeSceneNum(next.sceneNum)
-        );
-      });
-      if (!sceneChanged) {
-        if (window.viewingScene && normalizeSceneNum(window.viewingScene.num) === ev.num && typeof sendCommand === 'function') {
-          sendCommand(`?SCNCHANSTATES,${ev.num};`);
-        }
-        return;
-      }
-      if (next.on && next.sceneNum) {
-        const scene = result.catalog[normalizeSceneNum(next.sceneNum)] || { num: next.sceneNum, name: next.sceneName };
-        showControlSceneChannels(scene);
-      } else {
-        clearControlSceneChannels();
-      }
-    });
+function snapshotAreas() {
+  const areaSnapshot = {};
+  Object.keys(window.areaUi.byArea || {}).forEach(key => {
+    areaSnapshot[key] = Object.assign({}, window.areaUi.byArea[key]);
   });
+  return areaSnapshot;
+}
+
+function applyParsedSceneEvents(events) {
+  const names = [];
+  const statuses = [];
+  const others = [];
+  (events || []).forEach(ev => {
+    if (!ev) return;
+    if (ev.kind === 'name') {
+      if (window.areaUi.expectingSceneArea && !ev.area) {
+        ev = Object.assign({}, ev, { area: normalizeSceneNum(window.areaUi.expectingSceneArea) });
+      }
+      names.push(ev);
+      return;
+    }
+    if (ev.kind === 'status') {
+      statuses.push(ev);
+      return;
+    }
+    others.push(ev);
+  });
+
+  names.forEach(ev => {
+    applyAreaFeedback(reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: snapshotAreas(),
+      event: ev
+    }));
+  });
+
+  if (statuses.length) {
+    applyAreaFeedback(reduceSceneStatusSnapshot({
+      catalog: window.areaUi.scenesByNum,
+      areas: snapshotAreas(),
+      events: statuses,
+      hold: window.areaUi.sceneHold
+    }));
+  }
+
+  others.forEach(ev => {
+    applyAreaFeedback(reduceSceneFeedback({
+      catalog: window.areaUi.scenesByNum,
+      areas: snapshotAreas(),
+      event: ev
+    }));
+  });
+
+  if (isDebugLogEnabled() && (names.length || statuses.length || others.length)) {
+    formatSceneDebugReport({
+      catalog: window.areaUi.scenesByNum,
+      events: events,
+      areas: window.areaUi.byArea,
+      hold: window.areaUi.sceneHold
+    }).forEach(debugLog);
+  }
 }
 
 function applyGatewayLogMessage(message) {
@@ -481,12 +582,24 @@ function stopHttpScenePoll() {
   }
 }
 
+function sceneStatusQuery() {
+  const selected = window.areaUi.selectedNum;
+  if (window.areaUi.view === 'room' && selected) {
+    return `?SCNS,${parseInt(selected, 10)};`;
+  }
+  return '?SCNS;';
+}
+
 function startHttpScenePoll() {
   stopHttpScenePoll();
   if (currentConnectionType() === 'tcp') return;
   window.areaUi.scenePollTimer = setInterval(() => {
     if (!window.areaUi.sceneFeedbackOn) return;
-    if (typeof sendCommand === 'function') sendCommand('?SCNS;');
+    if (typeof sendCommand === 'function') {
+      const query = sceneStatusQuery();
+      debugLog(`poll ${query} view=${window.areaUi.view} room=${window.areaUi.selectedNum || '-'} hold=${window.areaUi.sceneHold && window.areaUi.sceneHold.sceneNum || '-'}`);
+      sendCommand(query);
+    }
   }, 4000);
 }
 
@@ -501,6 +614,7 @@ function enableSceneFeedback() {
     sendCommand('?SCNNAMES;');
     sendCommand('?SCNS;');
   }
+  debugLog(`scene feedback on via ${connectionType}; poll=${connectionType === 'tcp' ? 'EVTSCN' : sceneStatusQuery()}`);
   startHttpScenePoll();
 }
 
@@ -666,12 +780,12 @@ function toggleAreaPower(area, event) {
   const sceneNum = state.sceneNum;
   if (state.on) {
     state.on = false;
-    if (sceneNum && typeof sendCommand === 'function') {
+    if (sceneNum && typeof sendCommand === 'function' && !isFunctionScene(window.areaUi.scenesByNum[normalizeSceneNum(sceneNum)])) {
       sendCommand(`$SCNOFF,${sceneNum};`);
     }
   } else {
     state.on = true;
-    if (sceneNum && typeof sendCommand === 'function') {
+    if (sceneNum && typeof sendCommand === 'function' && !isFunctionScene(window.areaUi.scenesByNum[normalizeSceneNum(sceneNum)])) {
       sendCommand(`$SCNRECALL,${sceneNum};`);
     }
   }
@@ -1537,23 +1651,29 @@ function createSceneButtons(scenes) {
     }
     sceneBtn.addEventListener('click', () => {
       console.log('Scene button clicked:', scene.name, 'with scene number:', scene.num);
-      const isOff = isOffScene(scene);
+      const isFunction = isFunctionScene(scene);
+      const isOff = !isFunction && isOffScene(scene);
+      const role = classifySceneRole(scene);
+      const command = isOff ? `$SCNOFF,${scene.num};` : `$SCNRECALL,${scene.num};`;
+      debugLog(`click "${scene.name}" #${scene.num} role=${role} flags=${scene.flags == null ? '-' : scene.flags} send=${command} room=${areaNum || '-'}`);
+      if (typeof sendCommand === 'function') {
+        sendCommand(command);
+      }
+      if (areaNum && isFunction) {
+        holdSceneSelection(areaNum, getAreaState(areaNum).sceneNum);
+        return;
+      }
       if (areaNum) {
         const state = getAreaState(areaNum);
         state.sceneNum = scene.num;
         if (isOff) {
           state.on = false;
           state.sceneName = '';
-          if (typeof sendCommand === 'function') {
-            sendCommand(`$SCNOFF,${scene.num};`);
-          }
         } else {
           state.on = true;
           state.sceneName = scene.name;
-          if (typeof sendCommand === 'function') {
-            sendCommand(`$SCNRECALL,${scene.num};`);
-          }
         }
+        holdSceneSelection(areaNum, scene.num);
         refreshAreaTile(areaNum);
         refreshRoomHeader(areaNum);
       }
@@ -1620,8 +1740,8 @@ function clearControlSceneChannels() {
 
 function showControlSceneChannels(scene) {
   const isOff = isOffScene(scene);
-  if (isOff) {
-    clearControlSceneChannels();
+  if (isOff || isFunctionScene(scene)) {
+    if (isOff) clearControlSceneChannels();
     return;
   }
 
@@ -1942,7 +2062,15 @@ function sendCommand(type) {
     console.log(`DEBUG: Connection Type: ${connectionType}, IP: ${ip}, Port: ${port}`);
     console.log(`DEBUG: URL: ${url}`);
     if (window.electronAPI) {
-      window.electronAPI.sendCommand({ type: fullCommand, connection: connectionType, ip, port, url });
+      window.electronAPI.sendCommand({
+        type: fullCommand,
+        connection: connectionType,
+        ip,
+        port,
+        url,
+        debug: isDebugLogEnabled()
+      });
+      debugLog(`send ${connectionType} ${ip}:${port} ${type}`);
       console.log("DEBUG: Command sent via ipcRenderer.");
     } else {
       console.error("DEBUG: ipcRenderer (electronAPI) is NOT available! Check preload.js.");
@@ -2067,6 +2195,7 @@ if (window.electronAPI && typeof window.electronAPI.onLogMessage === 'function')
       message.includes("!DALINAME,") ||
       message.includes("!CHANTWCOLRNAME,")) {
     const channels = parseChannelNames(message);
+    debugLog(`channels named=${channels.length} viewing=${window.viewingScene && window.viewingScene.num || '-'} ${channels.map(ch => ch.name).join(', ')}`);
     if(channels.length > 0) {
       const modal = document.getElementById('sceneEditModal');
       const modalOpen = modal && modal.style.display === 'flex';
@@ -2095,6 +2224,7 @@ if (window.electronAPI && typeof window.electronAPI.onLogMessage === 'function')
       message.includes("!CHANRGBCOLR,") || // Added CHANRGBCOLR
       message.includes("!CHANTWCOLR,")) {
     const states = parseChannelStates(message);
+    debugLog(`channel states=${states.length} ${states.map(st => `${st.addr}/${st.devcode}/${st.chanNum}=${st.current}`).join(' ')}`);
     if(states.length > 0) {
       // updateChannelControls(states); // OLD WAY
       // NEW WAY: Delay updateChannelControls slightly to allow DOM to settle
@@ -2184,6 +2314,40 @@ function bindLogBarToggle() {
   box.addEventListener('change', () => setLogBarVisible(box.checked));
 }
 
+function isDebugLogStored() {
+  try {
+    return localStorage.getItem(DEBUG_LOG_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function bindDebugLogToggle() {
+  const box = document.getElementById('debugLogBar');
+  if (!box || box.dataset.bound === '1') return;
+  box.dataset.bound = '1';
+  box.checked = isDebugLogStored();
+  box.addEventListener('change', () => setDebugLogEnabled(box.checked));
+}
+
+function copyCommandLog() {
+  const logElement = document.getElementById('log');
+  const text = logElement ? logElement.innerText : '';
+  if (!text) {
+    if (typeof logMessage === 'function') logMessage('Command log is empty.');
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      logMessage('Command log copied to clipboard.', 'log-success');
+    }).catch(() => {
+      logMessage('Could not copy the command log.', 'log-message');
+    });
+    return;
+  }
+  logMessage('Clipboard is not available in this window.', 'log-message');
+}
+
 function applyLogBarVisibility(visible) {
   const show = typeof visible === 'boolean' ? visible : isLogBarVisible();
   document.body.classList.toggle('log-visible', show);
@@ -2193,6 +2357,7 @@ function applyLogBarVisibility(visible) {
     footer.setAttribute('aria-hidden', show ? 'false' : 'true');
   }
   bindLogBarToggle();
+  bindDebugLogToggle();
   const box = document.getElementById('showLogBar');
   if (box && box.checked !== show) box.checked = show;
   if (show) {
@@ -2205,6 +2370,10 @@ function applyLogBarVisibility(visible) {
 
 window.applyLogBarVisibility = applyLogBarVisibility;
 window.bindLogBarToggle = bindLogBarToggle;
+window.bindDebugLogToggle = bindDebugLogToggle;
+window.setDebugLogEnabled = setDebugLogEnabled;
+window.isDebugLogEnabled = isDebugLogEnabled;
+window.copyCommandLog = copyCommandLog;
 
 function logMessage(message, type = "log-message") {
   const logElement = document.getElementById('log');
@@ -2216,6 +2385,10 @@ function logMessage(message, type = "log-message") {
   newMessage.classList.add(type);
   newMessage.textContent = message;
   logElement.appendChild(newMessage);
+  const maxLines = isDebugLogEnabled() ? 2500 : 800;
+  while (logElement.childElementCount > maxLines) {
+    logElement.removeChild(logElement.firstChild);
+  }
   const logContainer = document.getElementById('log-container');
   if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
 }
