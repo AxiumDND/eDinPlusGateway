@@ -84,6 +84,12 @@
         <input type="checkbox" id="showLogBar">
         Show command log
       </label>
+      <label class="log-toggle" for="debugLogBar">
+        <input type="checkbox" id="debugLogBar">
+        Verbose diagnostics
+      </label>
+      <p class="info-text">Turn this on before reproducing a fault. Extra <code>DEBUG</code> lines classify each <code>!SCN</code> row (lighting / function / off), show poll queries, scene holds, and room tile changes. The command log opens automatically. Copy the log and send it with the report.</p>
+      <button type="button" onclick="copyCommandLog()">Copy command log</button>
       
       <h2>Test Connection</h2>
       <button onclick="testConnection()">Test Connection</button>
@@ -344,7 +350,7 @@
   </div><!-- .app-shell -->
 
   <aside id="logBar" class="command-log" hidden aria-label="Command log">
-    <div class="command-log-head">Command log</div>
+    <div class="command-log-head">Command log <button type="button" class="log-copy-btn" onclick="copyCommandLog()">Copy</button></div>
     <div id="log-container">
       <pre id="log"></pre>
     </div>
@@ -473,6 +479,8 @@
       }
       if (typeof applyLogBarVisibility === 'function') applyLogBarVisibility();
       else if (window.applyLogBarVisibility) window.applyLogBarVisibility();
+      if (typeof bindDebugLogToggle === 'function') bindDebugLogToggle();
+      else if (window.bindDebugLogToggle) window.bindDebugLogToggle();
       if (typeof applyAppVersion === 'function') applyAppVersion();
       showSection('setup');
       // Populate Fitting ID dropdown (0 to 63)

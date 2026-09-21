@@ -5,6 +5,9 @@ The version in `package.json` is the source of truth. GitHub Releases are create
 
 ## [Unreleased]
 
+### Added
+- Setup **Verbose diagnostics** checkbox: extra `DEBUG` lines in the command log (scene role, poll, hold, area changes, HTTP timing) plus **Copy command log**
+
 ### Fixed
 - Kitchen `?SCNS` polls no longer treat an active **Disable Sensor** / PIR scene as Off and wipe the room
 - Sensor and PIR scenes send `$SCNRECALL` instead of `$SCNOFF`

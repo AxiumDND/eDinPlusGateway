@@ -152,6 +152,22 @@ test('Kitchen ?SCNS snapshot still reports Off when ALL OFF is the active lighti
   assert.equal(snapshot.areas['1'].sceneNum, '131');
 });
 
+test('formatSceneDebugReport classifies Kitchen lighting vs Disable Sensor', () => {
+  const report = protocol.formatSceneDebugReport({
+    catalog: KITCHEN_CATALOG,
+    events: protocol.parseSceneEvents(KITCHEN_SCNS),
+    areas: { '1': { on: true, sceneNum: '130', sceneName: '1 Main spots & Kitchen' } },
+    hold: { areaNum: '1', sceneNum: '97', until: 20_000 },
+    now: 10_000
+  }).join('\n');
+  assert.match(report, /role=function/);
+  assert.match(report, /#81 "Disable Sensor"/);
+  assert.match(report, /#130 "1 Main spots & Kitchen"/);
+  assert.match(report, /lighting=\[130\]/);
+  assert.match(report, /function=\[81\]/);
+  assert.match(report, /hold area=1 scene=97 live=true remainMs=10000/);
+});
+
 test('scene hold keeps the recalled Kitchen scene while ?SCNS still lists another lighting row', () => {
   const snapshot = protocol.reduceSceneStatusSnapshot({
     catalog: KITCHEN_CATALOG,

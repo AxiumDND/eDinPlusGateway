@@ -50,6 +50,74 @@ function isOffScene(scene) {
   return (Number(scene.flags) & 1) === 1;
 }
 
+function classifySceneRole(scene) {
+  if (!scene) return 'unknown';
+  if (isFunctionScene(scene)) return 'function';
+  if (isOffScene(scene)) return 'off';
+  return 'lighting';
+}
+
+function describeSceneDebugRow(scene, ev) {
+  const row = Object.assign({ num: ev && ev.num, name: '', area: '', flags: ev && ev.flags }, scene || {});
+  if (ev && ev.flags != null) row.flags = ev.flags;
+  const active = ev && Object.prototype.hasOwnProperty.call(ev, 'active') ? (ev.active ? 1 : 0) : '-';
+  const level = ev && ev.level != null && Number.isFinite(ev.level) ? ev.level : '-';
+  const mode = ev && ev.mode != null && Number.isFinite(ev.mode) ? ev.mode : '-';
+  return `#${row.num || '?'} "${row.name || '?'}" area=${row.area || '?'} role=${classifySceneRole(row)} flags=${row.flags == null ? '-' : row.flags} mode=${mode} active=${active} level=${level}`;
+}
+
+function formatSceneDebugReport(input) {
+  const catalog = input && input.catalog || {};
+  const events = (input && input.events) || [];
+  const areas = input && input.areas || {};
+  const hold = input && input.hold;
+  const now = input && input.now != null ? Number(input.now) : Date.now();
+  const lines = [];
+  const names = events.filter(ev => ev && ev.kind === 'name');
+  const statuses = events.filter(ev => ev && ev.kind === 'status');
+  const states = events.filter(ev => ev && ev.kind === 'state');
+  const actions = events.filter(ev => ev && ev.kind === 'action');
+  lines.push(`DEBUG events names=${names.length} status=${statuses.length} state=${states.length} action=${actions.length}`);
+
+  statuses.concat(states).forEach(ev => {
+    const scene = catalog[ev.num] || { num: ev.num };
+    lines.push('DEBUG SCN ' + describeSceneDebugRow(scene, ev));
+  });
+  actions.forEach(ev => {
+    const scene = catalog[ev.num] || { num: ev.num };
+    lines.push(`DEBUG ACT ${ev.action} #${ev.num} "${scene.name || '?'}"`);
+  });
+
+  const byArea = {};
+  statuses.forEach(ev => {
+    const scene = catalog[ev.num] || { num: ev.num };
+    const areaNum = scene.area;
+    if (!areaNum || !ev.active) return;
+    if (!byArea[areaNum]) byArea[areaNum] = { lighting: [], function: [], off: [] };
+    const role = classifySceneRole(Object.assign({}, scene, ev.flags != null ? { flags: ev.flags } : {}));
+    const bucket = byArea[areaNum][role] || byArea[areaNum].lighting;
+    bucket.push(ev.num);
+  });
+  Object.keys(byArea).forEach(areaNum => {
+    const groups = byArea[areaNum];
+    lines.push(
+      `DEBUG active area ${areaNum} lighting=[${groups.lighting.join(',')}] function=[${groups.function.join(',')}] off=[${groups.off.join(',')}]`
+    );
+  });
+
+  if (hold && hold.sceneNum) {
+    const remain = Math.max(0, Number(hold.until || 0) - now);
+    const live = remain > 0;
+    lines.push(`DEBUG hold area=${hold.areaNum || '?'} scene=${hold.sceneNum} live=${live} remainMs=${remain}`);
+  }
+
+  Object.keys(areas).forEach(areaNum => {
+    const area = areas[areaNum] || {};
+    lines.push(`DEBUG tile area ${areaNum} on=${!!area.on} scene=${area.sceneNum || '-'} name="${area.sceneName || ''}"`);
+  });
+  return lines;
+}
+
 const SCENE_ACTION_ON = ['RECALL', 'RECALLX', 'FAST', 'BACKON'];
 const SCENE_ACTION_OFF = ['OFF'];
 const SCENE_EVENT_ACTIONS = [
@@ -605,6 +673,8 @@ const gatewayProtocol = {
   decodeGatewayText,
   isFunctionScene,
   isOffScene,
+  classifySceneRole,
+  formatSceneDebugReport,
   parseAreaResponse,
   parseSceneResponse,
   parseSceneEvents,

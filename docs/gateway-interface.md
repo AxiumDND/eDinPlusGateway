@@ -478,7 +478,7 @@ Plate palette `0–16`: Black, White, Red, Green, Blue, Orange, Cyan, Magenta, Y
 
 | Area | Behaviour |
 |------|-----------|
-| Setup | IP, HTTP vs TCP, user, Event Report → `$EVENTS` + `$EVTSCN` |
+| Setup | IP, HTTP vs TCP, user, Event Report → `$EVENTS` + `$EVTSCN`, command log, **Verbose diagnostics** |
 | Control tiles | `?AREANAMES`, scene caption from catalog + `!SCNSTATE` / `?SCNS` |
 | Room scenes | `?SCNNAMES,<area>`, `$SCNRECALL` / `$SCNOFF` |
 | Scene channels | `?SCNCHANNAMES` / `?SCNCHANSTATES`, sliders, Flash, nudge |
@@ -489,7 +489,9 @@ Plate palette `0–16`: Black, White, Red, Green, Blue, Orange, Cyan, Magenta, Y
 | Preview `?preview=1` | Demo house; Setup **Test Command** can inject `!SCNSTATE,…` locally |
 | Project catalog | Setup **Load project from gateway** — HTTP GET `/info?what=names` and `what=levels`, then Control/Adjust use that channel list |
 
-Helpers: `parseSceneEvents`, `reduceSceneFeedback`, `reduceSceneStatusSnapshot`, `isFunctionScene`, `isOffScene`, `decodeGatewayText`, `parseAreaResponse`, `parseSceneResponse`, `parseChannelNames`, `parseChannelStates`.
+Helpers: `parseSceneEvents`, `reduceSceneFeedback`, `reduceSceneStatusSnapshot`, `isFunctionScene`, `isOffScene`, `classifySceneRole`, `formatSceneDebugReport`, `decodeGatewayText`, `parseAreaResponse`, `parseSceneResponse`, `parseChannelNames`, `parseChannelStates`.
+
+**Verbose diagnostics** (Setup checkbox, stored as `DEBUG_LOG`): when on, Control writes `DEBUG` lines for each `!SCN` row’s role (lighting / function / off), active-per-area groups, the 10s recall hold, poll query, channel name/state counts, and HTTP/TCP timing. Use **Copy command log** when filing a site issue.
 
 ---
 

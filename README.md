@@ -11,7 +11,7 @@ Electron desktop app for an eDIN+ / Mode lighting NPU. **HTTP is the main path**
 - **DALI** — loop identify / BST
 - **EM Dali** — eTEST-style emergency commissioning and IEC 62386-202 tests
 - **Keypad** — `$BTNSTATE`
-- **Setup** — IP, HTTP vs TCP, `/info` catalog, command log
+- **Setup** — IP, HTTP vs TCP, `/info` catalog, command log, optional verbose diagnostics
 
 ## Download
 
